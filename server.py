@@ -143,6 +143,7 @@ def get_session(sid: str):
             raise HTTPException(status_code=404, detail="Session not found")
         return {
             "gemini_key_set": bool(prof.gemini_key),
+            "gemini_key": prof.gemini_key,
             "apollo_key_set": bool(prof.apollo_key),
             "resume_filename": prof.resume_filename,
             "resume_char_count": prof.resume_char_count,
@@ -234,6 +235,64 @@ async def upload_resume(sid: str, file: UploadFile = File(...)):
         return {"ok": True, "filename": file.filename, "char_count": len(text), "preview": text[:800]}
     finally:
         db.close()
+
+@app.post("/api/suggest-roles")
+async def suggest_roles(gemini_key: str = Form(...), target_role: str = Form(None), file: UploadFile = File(...)):
+    """Stateless endpoint: Extract text from resume and ask Gemini for role suggestions."""
+    if not gemini_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is required for suggestions.")
+        
+    content = await file.read()
+    try:
+        if file.filename.lower().endswith('.pdf'):
+            text = extract_text_from_pdf(io.BytesIO(content))
+        else:
+            text = content.decode('utf-8', errors='ignore')
+    except Exception as exc:
+        raise HTTPException(422, f"Document parse error: {exc}")
+        
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from document.")
+        
+    # Initialize Gemini directly here as it's stateless
+    genai.configure(api_key=gemini_key)
+    
+    context_instruction = ""
+    if target_role:
+        context_instruction = f"The user frequently searches for '{target_role}'. Consider aligning some suggestions closer to this domain if their experience warrants it."
+
+    prompt = f"""
+    You are an expert technical recruiter and career coach for the Indian Tech Job Market. Review the following resume text and suggest 5 to 10 highly specific, actionable job titles the candidate is qualified for. 
+    
+    Important Guidelines:
+    {context_instruction}
+    - Tailor the suggestions to prevalent job titles in India (e.g. prioritize 'Data Scientist', 'AI Developer', 'Software Development Engineer' over niche terms like 'LLM Engineer' unless their resume is exclusively focused on it).
+    - Deduplicate similar titles (e.g., provide either 'AI Engineer' or 'AI Developer', not both).
+    - Ensure practicality. Suggest roles they can realistically search and find on typical job boards like Naukri or Indeed.
+    - Focus strictly on the roles. DO NOT return any markdown formatting outside of a literal JSON list of strings.
+    
+    Example Output:
+    ["Senior Frontend Engineer", "React Developer", "UI/UX Developer"]
+    
+    Resume text:
+    {text[:5000]}
+    """
+    
+    models = ["gemini-2.0-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+    for m in models:
+        try:
+            model = genai.GenerativeModel(m)
+            response = model.generate_content(prompt)
+            raw_json = response.text.replace("```json", "").replace("```", "").strip()
+            import json
+            roles = json.loads(raw_json)
+            return {"roles": roles}
+        except Exception as e:
+            if "429" in str(e):
+                continue
+            print(f"Model {m} failed for suggestions: {e}")
+            
+    raise HTTPException(status_code=500, detail="Failed to parse suggestions from Gemini.")
 
 # ─────────────────────────────────────────────
 #  Job Search  (Gemini-powered)
@@ -342,12 +401,11 @@ def _scrape_linkedin_jobs(role: str, location: str, limit: int = 40) -> list[dic
             
     return jobs
 
-def _scrape_jobs_via_yahoo(role: str, location: str, site: str, limit: int = 15) -> list[dict]:
-    """Scrape real jobs from various platforms by searching Yahoo (bypasses bot protections)."""
+def _scrape_jobs_via_yahoo(role: str, location: str, site: str, limit: int = 50) -> list[dict]:
+    """Scrape real jobs from various platforms by searching Yahoo with deep pagination."""
     import urllib.parse
     
     query = f'site:{site} "{role}" "{location}" intitle:"job"'
-    url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -355,95 +413,211 @@ def _scrape_jobs_via_yahoo(role: str, location: str, site: str, limit: int = 15)
     }
     
     jobs = []
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            return jobs
-            
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        results = soup.find_all('div', class_='compTitle')
-        for div in results:
-            a = div.find('a')
-            if a and 'href' in a.attrs:
-                link = a['href']
-                title = a.text.strip()
+    seen = set()
+    b_offset = 1 # Yahoo pagination offset starts at 1, then 11, 21, etc.
+    
+    while len(jobs) < limit and b_offset <= 41: # Scrape up to 5 pages per domain
+        url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}&b={b_offset}"
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                break
                 
-                # Clean up tracking redirect
-                if 'RU=' in link:
-                    try:
-                        link = urllib.parse.unquote(link.split('RU=')[1].split('/')[0])
-                    except:
-                        pass
-                        
-                if site in link:
-                    # Enforce valid individual job links, skip category/search pages
-                    if "indeed.com" in site:
-                        if "/q-" in link or "/jobs" in link or "job-vacancies" in link:
-                            continue
-                    if "naukri.com" in site:
-                        if "-jobs" in link and "job-listings" not in link:
-                            continue
-                            
-                    snippet_div = div.find_next_sibling('div', class_='compText')
-                    snippet = snippet_div.text.strip() if snippet_div else "View listing for full details."
-
+            soup = BeautifulSoup(res.text, 'html.parser')
+            
+            results = soup.find_all('div', class_='compTitle')
+            if not results:
+                break # No more pages
+                
+            for div in results:
+                a = div.find('a')
+                if a and 'href' in a.attrs:
+                    link = a['href']
+                    title = a.text.strip()
                     
-                    # Clean title
-                    clean_title = title
-                    # Remove " - Naukri.com" or " | Indeed.com"
-                    clean_title = re.sub(r'(?i)\s*[-|]\s*[a-z0-9]+\.(com|in|co).*$', '', clean_title)
-                    # Remove website names explicitly
-                    clean_title = re.sub(r'(?i)\s*[-|]\s*(naukri|indeed|glassdoor|wellfound|apna|cutshort).*$', '', clean_title)
-                    
-                    # Fix Yahoo's weird concatenation like "Naukri.comwww.naukri.com › python-developer"
-                    if '›' in clean_title:
-                        parts = clean_title.split('›')
-                        clean_title = parts[-1].strip()
-                        # Often the slug is like "python-developer-django-flask..."
-                        clean_title = clean_title.replace('-', ' ').title()
-                        clean_title = re.sub(r'(?i)\bJob Listings\b\s*', '', clean_title).strip()
-                        clean_title = re.sub(r'(?i)[a-z]+(\.com|\.in).*$', '', clean_title).strip()
-                        
-                    clean_title = clean_title.replace("...", "").strip()
-                    if not clean_title or "Jobs In" in clean_title.title() or clean_title.lower().startswith("job search"):
-                        continue
-                        
-                    # Filter out expired or very old jobs
-                    snippet_lower = snippet.lower()
-                    if "month " in snippet_lower or "months " in snippet_lower or "year " in snippet_lower or "expired" in snippet_lower or "closed" in snippet_lower:
-                        continue
-                        
-                    # Extract company heuristic
-                    company = "Unknown"
-                    if " at " in clean_title.lower():
+                    # Clean up tracking redirect
+                    if 'RU=' in link:
                         try:
-                            # e.g., "Python Developer at TechCorp"
-                            parts = re.split(r'(?i)\s+at\s+', clean_title)
-                            clean_title = parts[0].strip()
-                            company = parts[1].split(' ')[0].strip("-,|")
+                            link = urllib.parse.unquote(link.split('RU=')[1].split('/')[0])
                         except:
                             pass
+                            
+                    if site.replace('www.', '').split('.')[0] in link:
+                        # Enforce valid individual job links, skip category/search pages
+                        if "indeed.com" in site:
+                            # Indeed can be in.indeed.com, www.indeed.com etc.
+                            if "/q-" in link or "/jobs" in link or "job-vacancies" in link:
+                                continue
+                        if "naukri.com" in site:
+                            if "-jobs" in link and "job-listings" not in link:
+                                continue
+                                
+                        snippet_div = div.find_next_sibling('div', class_='compText')
+                        snippet = snippet_div.text.strip() if snippet_div else "View listing for full details."
+
+                        # Deep Clean Title and Extract Company
+                        clean_title = title
+                        company = "Unknown"
                         
-                    job_id = f"job_y_{len(jobs)}_{hash(link) % 10000}"
-                    
-                    jobs.append({
-                        "id": job_id,
-                        "job_title": clean_title,
-                        "company": company,
-                        "location": location,
-                        "source": site.split('.')[0].title(),
-                        "link": link,
-                        "description": snippet,
-                        "salary": "Not disclosed",
-                        "posted": "Recently",
-                        "status": "Not Applied"
-                    })
-                    
-                    if len(jobs) >= limit:
-                        break
-    except Exception as e:
-        print(f"Yahoo Scraper error ({site}): {e}")
+                        # Fix Yahoo's weird concatenation "Naukri.comwww.naukri.com › python-developer"
+                        if '›' in clean_title:
+                            parts = clean_title.split('›')
+                            clean_title = parts[-1].strip()
+                            clean_title = clean_title.replace('-', ' ').title()
+                            
+                        # Strip "Job Listings" and "Job At" immediately after any potential `.title()` conversions
+                        clean_title = re.sub(r'(?i)\bJob Listings\b\s*', '', clean_title).strip()
+                        clean_title = re.sub(r'(?i)Job At\s+', '', clean_title).strip()
+                            
+                        # Fix Yahoo's Location Concatenation: e.g. "Mumbaisoftware Engineer" or "Bangaloresenior Developer"
+                        loc_match = location.replace(" ", "").lower()
+                        if clean_title.lower().startswith(loc_match):
+                            clean_title = clean_title[len(loc_match):].strip(" -|")
+                        # Aggressive Brute-Force Deduplication (Fixes Naukri URL slug prefixes)
+                        # e.g., "Ai Ml Backendai/Ml Backend Developer" -> "Ai/Ml Backend Developer"
+                        # e.g., "Azure Gen Aiazure Gen Ai Developer" -> "Azure Gen Ai Developer"
+                        
+                        # First try a simple regex for exact alphameric duplication
+                        match_nospace = re.match(r'^([a-zA-Z\s]{4,})([a-zA-Z\s]{4,}.*)$', clean_title, flags=re.IGNORECASE)
+                        if match_nospace:
+                            part1 = match_nospace.group(1).replace(" ", "").lower()
+                            part2 = match_nospace.group(2).replace(" ", "").lower()
+                            if part2.startswith(part1):
+                                clean_title = match_nospace.group(2).strip().title()
+                                
+                        # Hardcoded Known Buggy Prefixes
+                        known_prefixes = [
+                            ("Ai Ml Backendai/Ml", "Ai/Ml"), 
+                            ("Azure Gen Aiazure Gen", "Azure Gen"),
+                            ("Artificialartificial", "Artificial"),
+                            ("Gen Ai Developergen Ai", "Gen Ai")
+                        ]
+                        
+                        for bad, good in known_prefixes:
+                             if clean_title.lower().startswith(bad.lower()):
+                                 clean_title = good + clean_title[len(bad):]
+                                 if clean_title.lower().startswith(good.lower() + " " + good.lower()):
+                                     clean_title = good + clean_title[len(good)*2 + 1:]
+                                 
+                        # We will literally test every potential midpoint of the string.
+                        # If the left half (ignoring spaces/punctuation) matches the start of the right half,
+                        # we cut the string at that midpoint.
+                        cleaned_alpha = lambda s: ''.join(c.lower() for c in s if c.isalnum())
+                        
+                        best_cut_idx = 0
+                        # Test prefixes up to half the length of the string
+                        for i in range(5, len(clean_title) // 2 + 5):
+
+                            left_raw = clean_title[:i]
+                            left_clean = cleaned_alpha(left_raw)
+                            if len(left_clean) < 4:
+                                continue # Too short to be a reliable prefix
+                                
+                            right_raw = clean_title[i:]
+                            right_clean = cleaned_alpha(right_raw)
+                            
+                            if right_clean.startswith(left_clean):
+                                # Ensure we aren't cutting a single word in half
+                                if i < len(clean_title) and clean_title[i].isalpha() and clean_title[i-1].isalpha():
+                                    continue # False positive cut inside a word
+                                best_cut_idx = i
+                        
+                        if best_cut_idx > 0:
+                            # Re-run the word break check just to be safe
+                            if best_cut_idx < len(clean_title) and clean_title[best_cut_idx].isalpha() and clean_title[best_cut_idx-1].isalpha():
+                                pass
+                            else:
+                                clean_title = clean_title[best_cut_idx:].strip().title()
+                                if "/" in clean_title:
+                                    clean_title = clean_title.replace(" / ", "/").replace("/", " / ")
+
+                            
+                        # Handle standard delimiters: "Python Developer - TechCorp - Indeed.com"
+                        delimiters = [' - ', ' | ', ' at ', ' in ']
+                        for delim in delimiters:
+                            if delim in clean_title or delim.lower() in clean_title.lower():
+                                lower_title = clean_title.lower()
+                                idx = lower_title.rfind(delim.lower())
+                                if idx != -1:
+                                    potential_company = clean_title[idx + len(delim):].strip()
+                                    site_names = ['naukri', 'indeed', 'glassdoor', 'wellfound', 'apna', 'cutshort', 'workindia', 'hirist']
+                                    is_site = any(s in potential_company.lower() for s in site_names)
+                                    
+                                    if is_site:
+                                        clean_title = clean_title[:idx].strip()
+                                        idx2 = clean_title.lower().rfind(delim.lower())
+                                        if idx2 != -1:
+                                            company = clean_title[idx2 + len(delim):].strip()
+                                            clean_title = clean_title[:idx2].strip()
+                                    else:
+                                        if len(potential_company) < 40:
+                                            company = potential_company
+                                            clean_title = clean_title[:idx].strip()
+                                break
+                                
+                        # Aggressive Final Stripping
+                        clean_title = re.sub(r'(?i)\s*[-|]\s*[a-z0-9]+\.(com|in|co).*$', '', clean_title)
+                        clean_title = re.sub(r'(?i)\s*[-|]\s*(naukri|indeed|glassdoor|wellfound|apna|cutshort|workindia|hirist).*$', '', clean_title)
+                        clean_title = re.sub(r'(?i)\bJob Listings\b\s*', '', clean_title).strip()
+                        clean_title = re.sub(r'(?i)Job At\s+', '', clean_title).strip()
+                        clean_title = clean_title.replace("...", "").strip()
+                        
+                        # Extract company heuristic
+                        if company == "Unknown":
+                            if " at " in clean_title.lower():
+                                try:
+                                    parts = re.split(r'(?i)\s+at\s+', clean_title)
+                                    clean_title = parts[0].strip()
+                                    company = parts[1].split(' ')[0].strip("-,|")
+                                except:
+                                    pass
+                            elif snippet:
+                                snip_match = re.match(r'^([A-Z][a-zA-Z0-9\s\,\.&]{2,25})\b\s+(is hiring|is looking|requires|is urgently looking)', snippet)
+                                if snip_match:
+                                    company = snip_match.group(1).strip()
+                                    
+                        if not clean_title or "Jobs In" in clean_title.title() or "Job Search" in clean_title.title() or "Job Alerts" in clean_title.title():
+                            continue
+                            
+                        # If the entire title is the site name (Yahoo glitch) or a category search page
+                        site_names_glitch = ['naukri', 'indeed', 'apna.co', 'apnaapna.cosearch', 'glassdoor', 'wellfound', 'jobs online']
+                        if any(s.lower() == clean_title.replace(" ", "").lower() for s in site_names_glitch):
+                            continue
+                        if clean_title.lower().startswith("search jobs") or clean_title.lower().startswith("hire") or clean_title.lower().startswith("job application"): # Skip category pages
+                            continue
+                            
+                        # Format Source Name nicely
+                        source_name = site.split('.')[0].title()
+                        if source_name.lower() in ["join", "careers", "jobs", "lever", "greenhouse"]:
+                            source_name = "Career Site"
+                            
+                        job_id = f"job_y_{len(jobs)}_{hash(link) % 10000}"
+                        
+                        if link not in seen:
+                            seen.add(link)
+                            jobs.append({
+                                "id": job_id,
+                                "job_title": clean_title,
+                                "company": company,
+                                "location": location,
+                                "source": site.split('.')[0].title(),
+                                "link": link,
+                                "description": snippet,
+                                "salary": "Not disclosed",
+                                "posted": "Recently",
+                                "status": "Not Applied"
+                            })
+                        
+                        if len(jobs) >= limit:
+                            break
+            
+            b_offset += 10
+            import time
+            time.sleep(0.5) # Courtesy delay between pages
+            
+        except Exception as e:
+            print(f"Yahoo Scraper error ({site} page offset {b_offset}): {e}")
+            break
         
     return jobs
 
@@ -495,34 +669,44 @@ def _gemini_search_jobs(api_key: str, role: str, location: str, sources: list[st
     all_jobs = []
     seen_links = set()
     
-    # Calculate targets
+    # Calculate targets - significantly multiply the return limits
     total_sources = len(selected_domains) + (1 if use_linkedin else 0)
-    target_per_source = max(10, 40 // max(1, total_sources))
-    target_per_title = max(2, target_per_source // len(titles[:3]))
+    target_per_source = max(20, 100 // max(1, total_sources))
+    target_per_title = max(5, target_per_source // len(titles[:3]))
 
-    # Scrape LinkedIn if selected
-    if use_linkedin:
-        for t in titles[:3]:
-            fetched = _scrape_linkedin_jobs(t, location, limit=target_per_title)
-            for j in fetched:
-                if j['link'] and j['link'] not in seen_links:
-                    seen_links.add(j['link'])
-                    all_jobs.append(j)
+    import concurrent.futures
 
-    # Scrape other domains via Yahoo HTML
-    import time
-    for domain in selected_domains:
-        for t in titles[:2]:
-            fetched = _scrape_jobs_via_yahoo(t, location, domain, limit=target_per_title)
-            for j in fetched:
-                if j['link'] and j['link'] not in seen_links:
-                    seen_links.add(j['link'])
-                    all_jobs.append(j)
-            time.sleep(1)
+    def fetch_linkedin_task(t):
+        return _scrape_linkedin_jobs(t, location, limit=target_per_title * 2)
 
-    # If we didn't get enough, try getting more for the main role
-    if len(all_jobs) < 15 and use_linkedin:
-        more_jobs = _scrape_linkedin_jobs(role, location, limit=30)
+    def fetch_yahoo_task(t, domain):
+        return _scrape_jobs_via_yahoo(t, location, domain, limit=target_per_title * 2)
+
+    # Launch all scrapers concurrently
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        if use_linkedin:
+            for t in titles[:3]:
+                futures.append(executor.submit(fetch_linkedin_task, t))
+                
+        for domain in selected_domains:
+            for t in titles[:2]:
+                futures.append(executor.submit(fetch_yahoo_task, t, domain))
+
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                fetched = future.result()
+                for j in fetched:
+                    if j['link'] and j['link'] not in seen_links:
+                        seen_links.add(j['link'])
+                        all_jobs.append(j)
+            except Exception as e:
+                print(f"Concurrent thread error: {e}")
+
+    # If we still didn't get a huge batch, fallback safety scrape
+    if len(all_jobs) < 20 and use_linkedin:
+        more_jobs = _scrape_linkedin_jobs(role, location, limit=50)
         for j in more_jobs:
             if j['link'] and j['link'] not in seen_links:
                 seen_links.add(j['link'])
@@ -531,7 +715,8 @@ def _gemini_search_jobs(api_key: str, role: str, location: str, sources: list[st
     import random
     random.shuffle(all_jobs)
 
-    return {"titles": titles, "jobs": all_jobs[:40]}
+    # Remove the artificial 40 job cap entirely to return massive datasets
+    return {"titles": titles, "jobs": all_jobs}
 
 
 @app.post("/api/jobs/search/{sid}")

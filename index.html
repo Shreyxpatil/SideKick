@@ -143,9 +143,65 @@
                 class="tab-active pb-4 px-1 text-sm focus:outline-none transition-colors">Job Search</button>
             <button onclick="switchTab('applied')" id="tab-applied"
                 class="tab-inactive pb-4 px-1 text-sm focus:outline-none transition-colors">Applied Roles</button>
+            <button onclick="switchTab('suggest')" id="tab-suggest"
+                class="tab-inactive pb-4 px-1 text-sm focus:outline-none transition-colors">Role Matcher</button>
         </div>
 
         <div id="toastContainer"></div>
+
+        <!-- ─── ROLE MATCHER VIEW ─── -->
+        <div id="view-suggest" class="hidden space-y-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Resume Role Matcher</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Instantly generate job titles tailored to your
+                    resume.</p>
+            </div>
+
+            <div
+                class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 max-w-2xl mx-auto">
+                <div class="text-center mb-8">
+                    <div
+                        class="w-16 h-16 bg-primary/10 dark:bg-indigo-500/10 text-primary dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Upload Your Profile</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">We extract your skills locally to suggest the
+                        best search queries. PDF or TXT formats supported.</p>
+                </div>
+
+                <form id="suggestFormWeb" class="space-y-6">
+                    <div>
+                        <input type="file" id="resumeFileWeb" accept=".pdf,.txt" required
+                            class="block w-full text-sm text-gray-500 dark:text-gray-400
+                            file:mr-4 file:py-3 file:px-6
+                            file:rounded-xl file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-primary/10 file:text-primary
+                            hover:file:bg-primary/20
+                            dark:file:bg-indigo-500/10 dark:file:text-indigo-400
+                            dark:hover:file:bg-indigo-500/20 transition-colors cursor-pointer border border-gray-200 dark:border-gray-700 rounded-xl p-2 bg-gray-50 dark:bg-gray-900/50">
+                    </div>
+
+                    <button type="submit" id="suggestBtnWeb"
+                        class="w-full bg-primary hover:bg-primaryHover text-white px-6 py-4 rounded-xl font-semibold transition-all transform hover:-translate-y-0.5 shadow-sm hover:shadow flex justify-center items-center gap-2">
+                        <span id="suggestBtnTextWeb">Generate My Job Titles</span>
+                    </button>
+                </form>
+
+                <div id="suggestResultsWeb" class="hidden mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                        Click a title to copy it for your search
+                    </h4>
+                    <div id="rolesListWeb" class="flex flex-wrap gap-2">
+                        <!-- Pills will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- ─── PROFILE VIEW ─── -->
         <div id="view-profile" class="hidden space-y-6">

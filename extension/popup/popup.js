@@ -10,7 +10,7 @@ function initTheme() {
 
 // --- Tab Management ---
 function switchTab(tabId) {
-    ['apply', 'profile'].forEach(t => {
+    ['apply', 'profile', 'suggest'].forEach(t => {
         const view = $(`view-${t}`);
         const tab = $(`tab-${t}`);
         if (view) view.classList.add('hidden');
@@ -26,6 +26,7 @@ function switchTab(tabId) {
 
 $('tab-apply')?.addEventListener('click', () => switchTab('apply'));
 $('tab-profile')?.addEventListener('click', () => switchTab('profile'));
+$('tab-suggest')?.addEventListener('click', () => switchTab('suggest'));
 
 // --- Toast ---
 function toast(msg, type = 'success') {
@@ -131,4 +132,83 @@ function resetBtn(btn, btnText, originalText) {
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadProfile();
+});
+
+// --- Role Suggestions ---
+$('suggestForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = $('resumeFile');
+    if (!fileInput.files.length) return;
+
+    // Grab the user's gemini key from local storage if available. 
+    // This allows the extension to query without needing a backend session.
+    const { profileData } = await chrome.storage.local.get(['profileData']);
+    const geminiKey = profileData?.geminiKey;
+
+    // Quick prompt if not stored
+    const finalKey = geminiKey || prompt("Please provide a Gemini API Key to use this feature:");
+    if (!finalKey) {
+        toast('Gemini SDK key is required.', 'error');
+        return;
+    }
+
+    const btn = $('suggestBtn');
+    const btnText = $('suggestBtnText');
+    const originalText = btnText.textContent;
+    const resultsContainer = $('suggestResults');
+    const rolesList = $('rolesList');
+
+    try {
+        btn.disabled = true;
+        btnText.textContent = 'Analyzing Resume...';
+        btn.classList.add('opacity-75');
+
+        resultsContainer.classList.add('hidden');
+        rolesList.innerHTML = '';
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('gemini_key', finalKey);
+
+        const res = await fetch('http://localhost:8000/api/suggest-roles', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to fetch suggestions');
+        }
+
+        const data = await res.json();
+        const roles = data.roles || [];
+
+        if (roles.length === 0) {
+            throw new Error("No roles could be identified.");
+        }
+
+        // Render Roles
+        roles.forEach(role => {
+            const pill = document.createElement('div');
+            pill.className = 'px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-full text-xs font-medium text-indigo-300 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors';
+            pill.textContent = role;
+            pill.title = "Click to copy";
+            pill.addEventListener('click', () => {
+                navigator.clipboard.writeText(role);
+                toast(`Copied "${role}"`);
+            });
+            rolesList.appendChild(pill);
+        });
+
+        resultsContainer.classList.remove('hidden');
+        toast('Roles successfully extracted!');
+
+    } catch (err) {
+        toast(err.message, 'error');
+        console.error(err);
+    } finally {
+        btn.disabled = false;
+        btnText.textContent = originalText;
+        btn.classList.remove('opacity-75');
+    }
 });

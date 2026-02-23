@@ -24,7 +24,7 @@ function toast(msg, type = 'info') {
 }
 
 function switchTab(tabId) {
-  ['profile', 'search', 'applied'].forEach(t => {
+  ['profile', 'search', 'applied', 'suggest'].forEach(t => {
     const view = $(`view-${t}`);
     const tab = $(`tab-${t}`);
     if (view) view.classList.add('hidden');
@@ -350,3 +350,112 @@ window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initSession();
 });
+
+// ─────────────────────────────────────────────
+// Role Suggestions
+// ─────────────────────────────────────────────
+const suggestFormWeb = $('suggestFormWeb');
+if (suggestFormWeb) {
+  suggestFormWeb.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (!S.sid) {
+      toast("Session not ready.", 'error');
+      return;
+    }
+
+    const fileInput = $('resumeFileWeb');
+    if (!fileInput.files.length) return;
+
+    const btn = $('suggestBtnWeb');
+    const btnText = $('suggestBtnTextWeb');
+    const originalText = btnText.textContent;
+    const resultsContainer = $('suggestResultsWeb');
+    const rolesList = $('rolesListWeb');
+
+    try {
+      // 1. Ensure Gemini Key exists in this session
+      const checkRes = await fetch(`/api/session/${S.sid}`);
+      const checkData = await checkRes.json();
+
+      // The backend now exposes gemini_key at the root of the session object
+      let geminiObj = checkData.gemini_key;
+
+      if (!geminiObj) {
+        geminiObj = prompt("Please provide a Gemini API Key to use this feature (it won't be saved permanently without your permission):");
+        if (!geminiObj) {
+          toast('Gemini SDK key is required.', 'error');
+          return;
+        }
+      }
+
+      btn.disabled = true;
+      btnText.textContent = 'Analyzing Resume...';
+      btn.classList.add('opacity-75');
+      resultsContainer.classList.add('hidden');
+      rolesList.innerHTML = '';
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('gemini_key', geminiObj);
+
+      // Pass the current search role as context if it exists
+      const baseRoleInput = $('baseRole');
+      if (baseRoleInput && baseRoleInput.value.trim()) {
+        formData.append('target_role', baseRoleInput.value.trim());
+      }
+
+      const res = await fetch('/api/suggest-roles', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to fetch suggestions');
+      }
+
+      const data = await res.json();
+      const roles = data.roles || [];
+
+      if (roles.length === 0) {
+        throw new Error("No roles could be identified.");
+      }
+
+      // Render Roles
+      roles.forEach(role => {
+        const pill = document.createElement('div');
+        pill.className = 'px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 rounded-full text-sm font-medium text-gray-800 dark:text-gray-200 cursor-pointer transition-colors';
+        pill.textContent = role;
+        pill.title = "Click to set as Base Role";
+        pill.addEventListener('click', async () => {
+          navigator.clipboard.writeText(role);
+          toast(`Copied "${role}"`);
+
+          // Auto-fill the search input
+          if ($('baseRole')) {
+            $('baseRole').value = role;
+            // Save to session immediately
+            const fd = new FormData();
+            fd.append("base_job_role", role);
+            await fetch(`/api/session/${S.sid}`, { method: "POST", body: fd });
+
+            toast(`Set "${role}" as your Search Target.`, 'info');
+          }
+        });
+        rolesList.appendChild(pill);
+      });
+
+      resultsContainer.classList.remove('hidden');
+      toast('Roles successfully extracted!', 'success');
+
+    } catch (err) {
+      toast(err.message, 'error');
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btnText.textContent = originalText;
+      btn.classList.remove('opacity-75');
+    }
+  });
+}
