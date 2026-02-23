@@ -1,0 +1,52 @@
+{
+    "manifest_version": 3,
+    "name": "Sidekick - AI Job Application Assistant",
+    "version": "1.0.0",
+    "description": "Stateless, privacy-first typing assistant that helps you fill out job applications securely in your local browser.",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "scripting"
+    ],
+    "host_permissions": [
+        "https://*.workday.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.linkedin.com/*",
+        "https://*.icims.com/*"
+    ],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "icons/logo.png",
+            "48": "icons/logo.png",
+            "128": "icons/logo.png"
+        }
+    },
+    "icons": {
+        "16": "icons/logo.png",
+        "48": "icons/logo.png",
+        "128": "icons/logo.png"
+    },
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*.workday.com/*",
+                "https://*.myworkdayjobs.com/*",
+                "https://*.greenhouse.io/*",
+                "https://*.lever.co/*",
+                "https://*.linkedin.com/*",
+                "https://*.icims.com/*"
+            ],
+            "js": [
+                "content_scripts/autofill.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ]
+}

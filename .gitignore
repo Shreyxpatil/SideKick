@@ -1,0 +1,22 @@
+# Environments
+venv/
+env/
+.env
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Logs and databases
+logs/
+*.log
+database.db
+
+# Archives and tests
+archive/
+tests/
+assets/original_logos/
+
+# Other
+.DS_Store
+tailwindcss-linux-x64
