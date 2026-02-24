@@ -13,6 +13,7 @@ setTimeout(() => {
         autoFillForm(data);
         injectHumanReviewBanner();
         enforceHardStop();
+        runVibeCheck(data);
     });
 }, 1000);
 
@@ -189,6 +190,11 @@ function autoFillForm(data) {
     textInputs.forEach(input => {
         const name = (input.name || input.id || input.placeholder || input.getAttribute('aria-label') || '').toLowerCase();
 
+        // Phase 13: Dynamic Cover Letter Injection Trigger
+        if (input.tagName === 'TEXTAREA' && (name.includes('cover') || name.includes('letter') || name.includes('message to hiring manager'))) {
+            injectCoverLetterButton(input, data);
+        }
+
         // Let block logic rule if it already filled this
         if (input.value) return;
 
@@ -271,8 +277,227 @@ function enforceHardStop() {
 
             // Log the hard stop logic explicitly
             console.log("Sidekick [HARD STOP]: Identified submit button but actively refusing to click it. Human review required.");
+
+            // Phase 13: Auto-Sync Tracker
+            btn.addEventListener('click', () => {
+                syncApplicationLog();
+            });
         }
     });
+}
+
+function syncApplicationLog() {
+    let company = "Unknown Company";
+    let title = document.title.split('-')[0].trim() || "Applied Role";
+
+    // Quick heuristic to grab company name if Lever/Greenhouse/Workday
+    const header = document.querySelector('h1, h2, .company-name, [data-automation-id="companyName"]');
+    if (header) company = header.innerText.trim();
+
+    fetch('http://localhost:8000/api/sync-tracker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            company: company,
+            title: title,
+            url: window.location.href,
+            date: new Date().toISOString().split('T')[0]
+        })
+    }).catch(e => console.error("Sidekick Tracker Sync Failed", e));
+}
+
+async function runVibeCheck(profileData) {
+    if (!profileData.gemini_key) {
+        console.warn("Sidekick: No Gemini Key available for ATS Vibe Check.");
+        return;
+    }
+
+    // Attempt to scrape job description text from common ATS container classes
+    let jdText = "";
+    const jdContainers = document.querySelectorAll('.job-description, .posting-requirements, [data-automation="jobDescription"]');
+    if (jdContainers.length > 0) {
+        jdContainers.forEach(c => jdText += c.innerText + " ");
+    } else {
+        // Fallback: just grab all body text and truncate it to avoid massive payload
+        jdText = document.body.innerText.substring(0, 5000);
+    }
+
+    if (!jdText || jdText.length < 100) return;
+
+    try {
+        // We need the session_id to properly route the request to the proxy
+        const result = await chrome.storage.local.get(["session_id"]);
+        const sid = result.session_id || "demo-session";
+
+        const response = await fetch(`http://localhost:8000/api/ai/analyze-job/${sid}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                job_description: jdText,
+                profile_data: profileData
+            })
+        });
+
+        if (response.ok) {
+            const analysis = await response.json();
+            injectVibeCheckWidget(analysis);
+        }
+    } catch (e) {
+        console.error("Sidekick Vibe Check failed:", e);
+    }
+}
+
+function injectVibeCheckWidget(analysis) {
+    const defaultPic = chrome.runtime.getURL("icons/icon128.png");
+
+    const widget = document.createElement('div');
+    widget.style.position = 'fixed';
+    widget.style.top = '20px';
+    widget.style.right = '20px';
+    widget.style.width = '300px';
+    widget.style.backgroundColor = '#1e1b4b'; // indigo-950
+    widget.style.color = 'white';
+    widget.style.padding = '16px';
+    widget.style.borderRadius = '12px';
+    widget.style.zIndex = '999999';
+    widget.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1)';
+    widget.style.border = '1px solid #3730a3';
+    widget.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+
+    let missingHtml = '';
+    if (analysis.missing_keywords && analysis.missing_keywords.length > 0) {
+        missingHtml = `
+            <div style="margin-top: 12px;">
+                <p style="font-size: 11px; color: #a5b4fc; text-transform: uppercase; font-weight: bold; margin: 0 0 4px 0;">Missing Keywords</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${analysis.missing_keywords.map(kw => `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 2px 6px; border-radius: 4px; font-size: 11px; border: 1px solid rgba(239, 68, 68, 0.3);">${kw}</span>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    let warningHtml = '';
+    if (analysis.red_flags && analysis.red_flags.length > 0) {
+        warningHtml = `
+            <div style="margin-top: 12px; border-top: 1px solid rgba(245, 158, 11, 0.3); padding-top: 8px;">
+                <p style="font-size: 11px; color: #fbbf24; text-transform: uppercase; font-weight: bold; margin: 0 0 4px 0; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Red Flags Detected
+                </p>
+                <ul style="margin: 0; padding-left: 16px; font-size: 11px; color: #fde68a;">
+                    ${analysis.red_flags.map(f => `<li>${f}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    widget.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <img src="${defaultPic}" width="20" height="20" style="border-radius: 4px;" alt="Sidekick">
+                <span style="font-size: 14px; font-weight: 700; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ATS Vibe Check</span>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" style="background:none; border:none; color:#6366f1; cursor:pointer; padding:0; font-size:16px;">&times;</button>
+        </div>
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
+            <span style="font-size: 13px; color: #cbd5e1;">Match Score</span>
+            <span style="font-size: 20px; font-weight: 800; color: ${analysis.match_score > 75 ? '#34d399' : analysis.match_score > 50 ? '#fbbf24' : '#f87171'};">${analysis.match_score}%</span>
+        </div>
+
+        ${missingHtml}
+        ${warningHtml}
+        
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button id="sk-prep-btn" style="flex: 1; background: #4f46e5; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; transition: background 0.2s;">Prep Interview</button>
+            <button id="sk-dm-btn" style="flex: 1; background: #475569; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; transition: background 0.2s;">Generate DM</button>
+        </div>
+        <div id="sk-ai-output" style="margin-top: 12px; font-size: 11px; color: #cbd5e1; white-space: pre-wrap; display: none; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; max-height: 200px; overflow-y: auto;"></div>
+    `;
+
+    document.body.appendChild(widget);
+
+    // Attach Event Listeners for the AI features
+    document.getElementById('sk-prep-btn').addEventListener('click', async (e) => {
+        e.target.innerText = "Loading...";
+        const out = document.getElementById('sk-ai-output');
+        out.style.display = 'block';
+        out.innerText = "Generating 5 highly probable technical questions based on the JD...";
+
+        try {
+            const result = await chrome.storage.local.get(["session_id"]);
+            const res = await fetch(`http://localhost:8000/api/ai/interview-prep/${result.session_id || "demo"}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_description: document.body.innerText.substring(0, 5000) })
+            });
+            const data = await res.json();
+            out.innerHTML = data.questions.map((q, i) => `<strong style="color: #818cf8;">Q${i + 1}: ${q.question}</strong><br><span style="color:#94a3b8">${q.answer_guide}</span><br><br>`).join('');
+            e.target.innerText = "Prep Interview";
+        } catch (err) { out.innerText = "Error generating prep."; e.target.innerText = "Error"; }
+    });
+
+    document.getElementById('sk-dm-btn').addEventListener('click', async (e) => {
+        generateTextFeature(e.target, 'Recruiter DM');
+    });
+}
+
+function injectCoverLetterButton(textarea, profileData) {
+    if (textarea.parentElement.querySelector('.sk-cl-btn')) return; // Already injected
+
+    const btn = document.createElement('button');
+    btn.className = 'sk-cl-btn';
+    btn.innerText = "✨ Auto-Write Cover Letter ✨";
+    btn.style.cssText = "display: block; margin-bottom: 8px; background: linear-gradient(to right, #6366f1, #a855f7); color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);";
+
+    btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        btn.innerText = "Writing...";
+
+        try {
+            const result = await chrome.storage.local.get(["session_id"]);
+            const res = await fetch(`http://localhost:8000/api/ai/generate-text/${result.session_id || "demo"}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt_context: 'Cover Letter',
+                    job_description: document.body.innerText.substring(0, 5000),
+                    profile_data: profileData
+                })
+            });
+            const data = await res.json();
+            textarea.value = data.text;
+            triggerEvents(textarea);
+            btn.innerText = "✨ Written ✨";
+            btn.style.background = "#10b981";
+        } catch (err) { btn.innerText = "Error"; }
+    });
+
+    textarea.parentElement.insertBefore(btn, textarea);
+}
+
+async function generateTextFeature(buttonEl, contextType) {
+    buttonEl.innerText = "Loading...";
+    const out = document.getElementById('sk-ai-output');
+    out.style.display = 'block';
+    out.innerText = `Generating custom ${contextType}...`;
+
+    try {
+        const profileData = await chrome.storage.local.get(null);
+        const result = await chrome.storage.local.get(["session_id"]);
+        const res = await fetch(`http://localhost:8000/api/ai/generate-text/${result.session_id || "demo"}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt_context: contextType,
+                job_description: document.body.innerText.substring(0, 5000),
+                profile_data: profileData
+            })
+        });
+        const data = await res.json();
+        out.innerText = data.text;
+        buttonEl.innerText = `Generate ${contextType.split(' ')[1]}`;
+    } catch (err) { out.innerText = "Error generating text."; buttonEl.innerText = "Error"; }
 }
 
 function injectHumanReviewBanner() {

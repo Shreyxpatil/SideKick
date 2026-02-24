@@ -15,6 +15,7 @@ import json
 import re
 import uuid
 import datetime
+import csv
 from pathlib import Path
 from typing import Any, Dict
 
@@ -73,6 +74,25 @@ _jobs_cache = {}
 # ---------------------------------------------------------
 # Pydantic Schemas with Validation
 # ---------------------------------------------------------
+
+class JobScoreRequest(BaseModel):
+    job_description: str
+    profile_data: Dict[str, Any]
+    
+class GenerateTextRequest(BaseModel):
+    prompt_context: str
+    job_description: str
+    profile_data: Dict[str, Any]
+
+class SyncTrackerRequest(BaseModel):
+    company: str
+    title: str
+    url: str
+    date: str
+
+class InterviewPrepRequest(BaseModel):
+    job_description: str
+
 # Pydantic schema validation removed in favor of dynamic JSON storage
 
 # ─────────────────────────────────────────────
@@ -776,6 +796,127 @@ def clear_log(sid: str):
             raise HTTPException(status_code=404, detail="Session not found")
         _applied_log[sid] = []
         return {"ok": True}
+    finally:
+        db.close()
+
+# ─────────────────────────────────────────────
+#  Advanced AI Endpoints (Phase 13)
+# ─────────────────────────────────────────────
+
+@app.post("/api/ai/analyze-job/{sid}")
+def analyze_job(sid: str, req: JobScoreRequest):
+    """ATS Vibe Check & Red Flag Scanner"""
+    db = SessionLocal()
+    try:
+        prof = db.query(DBProfile).filter(DBProfile.session_id == sid).first()
+        if not prof or not prof.gemini_key:
+            raise HTTPException(status_code=400, detail="Mising session or Gemini Key")
+
+        prompt = f"""You are an expert technical recruiter and career coach.
+I am sending you a candidate's profile data and a job description.
+Your job is to analyze their fit and return EXACTLY valid JSON with these keys:
+- match_score: (Integer 0-100 indicating fit)
+- missing_keywords: (List of string keywords/skills in the JD but not in the profile)
+- red_flags: (List of string warnings about toxic language like 'wear many hats', 'fast-paced', 'work hard play hard', demanding hours, or unrealistic requirements)
+
+Profile JSON: {json.dumps(req.profile_data)}
+
+Job Description: {req.job_description}
+
+Return ONLY standard JSON. No markdown formatting blocks."""
+        
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={prof.gemini_key}"
+        res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
+        if not res.ok:
+            raise HTTPException(500, "Gemini call failed")
+            
+        text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+        
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*$', '', text).strip()
+        
+        return json.loads(text)
+    except Exception as e:
+        print(f"Error in analyze_job: {e}")
+        return {"match_score": 0, "missing_keywords": [], "red_flags": []}
+    finally:
+        db.close()
+
+
+@app.post("/api/sync-tracker")
+def sync_tracker(req: SyncTrackerRequest):
+    """Auto-log applied jobs to a CSV (simulating Google Sheets)"""
+    try:
+        with open("tracking.csv", mode='a', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow([req.company, req.title, req.url, req.date])
+        return {"ok": True}
+    except Exception as e:
+        print(f"Failed to sync tracker: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/ai/generate-text/{sid}")
+def generate_text(sid: str, req: GenerateTextRequest):
+    """Dynamic Cover Letter & Recruiter DM Generator"""
+    db = SessionLocal()
+    try:
+        prof = db.query(DBProfile).filter(DBProfile.session_id == sid).first()
+        if not prof or not prof.gemini_key:
+            raise HTTPException(status_code=400, detail="Mising session or Gemini Key")
+
+        prompt = f"""You are a brilliant career coach generating a {req.prompt_context}.
+Here is the candidate's profile data: {json.dumps(req.profile_data)}
+Here is the job description: {req.job_description}
+
+Instructions for {req.prompt_context}:
+If it is a Cover Letter: Write a concise, energetic 3-paragraph letter matching their skills to the JD perfectly. 
+If it is a Recruiter DM: Write a short, punchy 3-sentence connection request mentioning something specific from the JD.
+
+Return ONLY the raw text, no intro, no emojis, no asterisks."""
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={prof.gemini_key}"
+        res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
+        if not res.ok:
+            raise HTTPException(500, "Gemini call failed")
+            
+        return {"text": res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()}
+    except Exception as e:
+        print(f"Error in generate_text: {e}")
+        return {"text": "Generation failed."}
+    finally:
+        db.close()
+
+
+@app.post("/api/ai/interview-prep/{sid}")
+def interview_prep(sid: str, req: InterviewPrepRequest):
+    """Instant Technical Interview Prep Generator"""
+    db = SessionLocal()
+    try:
+        prof = db.query(DBProfile).filter(DBProfile.session_id == sid).first()
+        if not prof or not prof.gemini_key:
+            raise HTTPException(status_code=400, detail="Mising session or Gemini Key")
+
+        prompt = f"""Based entirely on the technical requirements and stack mentioned in this Job Description, generate exactly 5 highly probable technical interview questions that the candidate should expect. For each question, provide a brief, excellent 1-paragraph summary of how they should answer it.
+
+Job Description: {req.job_description}
+
+Return ONLY valid JSON with this format:
+[{{ "question": "Question text", "answer_guide": "Guide text" }}]
+"""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={prof.gemini_key}"
+        res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
+        if not res.ok:
+            raise HTTPException(500, "Gemini call failed")
+            
+        text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*$', '', text).strip()
+        
+        return {"questions": json.loads(text)}
+    except Exception as e:
+        print(f"Error in interview_prep: {e}")
+        return {"questions": []}
     finally:
         db.close()
 

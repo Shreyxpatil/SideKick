@@ -4,13 +4,12 @@ Sidekick is a dual-architecture career acceleration platform featuring a modern 
 
 ## Features
 
-- **Stateless Chrome Extension:** Operates directly inside the browser, extracting resume data and auto-filling job applications on major ATS platforms (Workday, Greenhouse, Lever, etc.).
-- **Privacy-First Design:** Profile data is securely stored in `chrome.storage.local`. No databases are used for the extension's auto-fill logic.
-- **Human-in-the-Loop Auto-Fill:** The bot populates complex forms but enforces a strict hard-stop, explicitly refusing to click "Submit" automatically, allowing users to safely review all applications.
-- **Premium UI/UX:** Built with Tailwind CSS v4, featuring glassmorphism, dynamic micro-animations, and a responsive dark theme across both the extension and web dashboard.
-- **Job Board Scraping Backend:** A FastAPI backend designed to scrape current jobs from multiple platforms (LinkedIn, Naukri, Glassdoor, etc.) and proxy AI requests.
-
-## Architecture
+- **Stateless Chrome Extension:** Operates directly inside the browser, extracting resume data and auto-filling job applications on major ATS platforms.
+- **Privacy-First Design:** Profile data securely stored in `chrome.storage.local`. No external database.
+- **Advanced ATS Vibe Check:** In-browser AI instantly grades your resume against the current job application, highlighting exactly which target keywords you are missing and flashing a warning if the description contains toxic workplace red flags.
+- **1-Click Generation Suite:** Generate highly targeted Cover Letters, personalized Recruiter cold DMs, and 5 highly probable technical interview prep questions straight from the job application screen context.
+- **Auto-Sync Application Receipts:** Automatically logs applied companies, job titles, and dates to a local tracking file exactly when you hit Submit on an ATS.
+- **High-Volume Backend Profiler:** FastAPI server safely proxies your local Gemini API key to deeply scan pages and generate Role suggestions tailored to your market.
 
 - **Extension (`/extension`):** Manifest V3 Chrome Extension containing content scripts, background service workers, and a Tailwind-styled popup UI.
 - **Backend (`server.py`):** FastAPI application acting as a proxy for the Gemini API and hosting the main web dashboard.
