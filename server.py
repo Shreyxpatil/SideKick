@@ -725,14 +725,59 @@ async def search_jobs(sid: str):
     if not region:
         raise HTTPException(400, "Target metro region is required")
 
-    result = _gemini_search_jobs(gemini_key, role, region, sources)
-    _jobs_cache[sid] = result["jobs"]
+    
+    from scraper_pipeline.orchestrator import compile_orchestrator_graph
+    import concurrent.futures
+    import random
+    
+    # Initialize the compiled LangGraph machine
+    graph = compile_orchestrator_graph()
+    all_normalized_jobs = []
+
+    def dispatch_agent_pipeline(platform_name):
+        initial_state = {
+            "platform_identifier": platform_name,
+            "target_role": role,
+            "target_location": region,
+            "target_url": "",
+            "raw_payload": "",
+            "extracted_records": [],
+            "normalized_records": [],
+            "ingestion_success": False,
+            "error_trace": [],
+            "retry_count": 0,
+            "gemini_key": gemini_key
+        }
+        try:
+            # LangGraph handles extraction -> normalization
+            final_state = graph.invoke(initial_state)
+            return final_state.get("normalized_records", [])
+        except Exception as e:
+            print(f"Pipeline error for {platform_name}: {e}")
+            return []
+
+    # Map the stored user sources to the platform scripts
+    target_platforms = []
+    if not sources or "LinkedIn" in sources:
+        target_platforms.append("linkedin")
+    if not sources or "Naukri" in sources:
+        target_platforms.append("naukri")
+        
+    # Execute the DAG workflows concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(dispatch_agent_pipeline, p) for p in target_platforms]
+        for future in concurrent.futures.as_completed(futures):
+            results = future.result()
+            all_normalized_jobs.extend(results)
+            
+    random.shuffle(all_normalized_jobs)
+    _jobs_cache[sid] = all_normalized_jobs
     
     return {
         "ok":     True,
-        "titles": result["titles"],
-        "jobs":   result["jobs"],
-        "count":  len(result["jobs"]),
+        "titles": [role], # Gemini title expansion removed in favor of strict extraction
+        "jobs":   all_normalized_jobs,
+        "count":  len(all_normalized_jobs),
     }
 
 
