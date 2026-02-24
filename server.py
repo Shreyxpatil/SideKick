@@ -706,10 +706,14 @@ async def search_jobs(sid: str):
         if not prof:
             raise HTTPException(status_code=404, detail="Session not found")
             
-        role = prof.base_job_role
-        region = prof.target_metro_region
-        sources_str = prof.target_sources
-        sources = json.loads(sources_str) if sources_str else []
+        try:
+            pdata = json.loads(prof.profile_json) if prof.profile_json else {}
+        except:
+            pdata = {}
+            
+        role = pdata.get("base_job_role", "")
+        region = pdata.get("target_metro_region", "")
+        sources = pdata.get("target_sources", [])
         gemini_key = prof.gemini_key
     finally:
         db.close()
