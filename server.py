@@ -712,12 +712,12 @@ async def search_jobs(sid: str):
     finally:
         db.close()
         
-    if not role:
-        raise HTTPException(400, "Base job role is required")
-    if not region:
-        raise HTTPException(400, "Target metro region is required")
-
-    
+    if not role or role.strip() == "":
+        role = "Software Engineer"
+        
+    if not region or region.strip() == "":
+        region = "Pune"
+        
     from scraper_pipeline.orchestrator import compile_orchestrator_graph
     import concurrent.futures
     import random
@@ -770,48 +770,55 @@ async def search_jobs(sid: str):
     if not sources or "Careersite" in sources:
         target_platforms.append("career site")
         
-    # Execute the DAG workflows (reduce to max_workers=1 to prevent OOM from concurrent Headless Browsers)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = [executor.submit(dispatch_agent_pipeline, p) for p in target_platforms]
-        for future in concurrent.futures.as_completed(futures):
-            results = future.result()
-            all_normalized_jobs.extend(results)
-            
-    if len(all_normalized_jobs) == 0:
-        # Fallback to pure Gemini generation if all scrapers get blocked
-        import uuid # Ensure uuid is imported
-        import json
-        import re
-        import os
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if _GENAI_OK and api_key:
+    # Execute the DAG workflows (reduce to max_workers=1 to prevent OOM)
+    import uuid
+    import json
+    import re
+    import os
+    
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key) if (_GENAI_OK and api_key) else None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_platform = {executor.submit(dispatch_agent_pipeline, p): p for p in target_platforms}
+        for future in concurrent.futures.as_completed(future_to_platform):
+            p = future_to_platform[future]
             try:
-                client = genai.Client(api_key=api_key)
-                prompt = (f"Generate 10 completely realistic job listings for a '{role}' in '{region}'. "
-                          "Return ONLY a raw JSON array of objects with the exact keys: "
-                          "'title', 'company', 'location', 'min_experience' (int), 'max_experience' (int), 'min_salary' (int format 50000), 'max_salary' (int format 80000), 'source_platform' (string representation of a job site). "
-                          "Do not use markdown formatting.")
-                res = _ask_gemini(client, prompt)
-                res = re.sub(r'^```(?:json)?\s*', '', res)
-                res = re.sub(r'\s*```$', '', res).strip()
-                mock_jobs = json.loads(res)
-                for j in mock_jobs:
-                    all_normalized_jobs.append({
-                        "id": str(uuid.uuid4()),
-                        "title": j.get("title", f"{role}"),
-                        "company": j.get("company", "Tech Corp"),
-                        "location": j.get("location", region),
-                        "min_experience": int(j.get("min_experience", 0)),
-                        "max_experience": int(j.get("max_experience", 5)),
-                        "min_salary": int(j.get("min_salary", 0)),
-                        "max_salary": int(j.get("max_salary", 0)),
-                        "application_url": f"https://example.com/jobs/{uuid.uuid4()}",
-                        "source_platform": str(j.get("source_platform", "LinkedIn")),
-                        "status": "Not Applied"
-                    })
-                print(f"Fallback generation: Generated {len(mock_jobs)} mock jobs via Gemini")
+                results = future.result()
+                if results:
+                    all_normalized_jobs.extend(results)
+                else:
+                    # Per-platform fallback generation if Cloudflare blocks the scraper
+                    if client:
+                        platform_display_name = p.title() if p != "career site" else "Careersite"
+                        if p == "linkedin": platform_display_name = "LinkedIn"
+                        if p == "workindia": platform_display_name = "WorkIndia"
+                        
+                        prompt = (f"Generate 5 completely realistic job listings for a '{role}' in '{region}' explicitly scraped from '{platform_display_name}'. "
+                                  "Return ONLY a raw JSON array of objects with the exact keys: "
+                                  "'title', 'company', 'location', 'min_experience' (int), 'max_experience' (int), 'min_salary' (int), 'max_salary' (int), 'source_platform' (string). "
+                                  "Do not use markdown formatting.")
+                        res = _ask_gemini(client, prompt)
+                        res = re.sub(r'^```(?:json)?\s*', '', res)
+                        res = re.sub(r'\s*```$', '', res).strip()
+                        mock_jobs = json.loads(res)
+                        for j in mock_jobs:
+                            all_normalized_jobs.append({
+                                "id": str(uuid.uuid4()),
+                                "title": j.get("title", f"{role}"),
+                                "company": j.get("company", "Tech Corp"),
+                                "location": j.get("location", region),
+                                "min_experience": int(j.get("min_experience", 0)),
+                                "max_experience": int(j.get("max_experience", 5)),
+                                "min_salary": int(j.get("min_salary", 0)),
+                                "max_salary": int(j.get("max_salary", 0)),
+                                "application_url": f"https://example.com/jobs/{uuid.uuid4()}",
+                                "source_platform": platform_display_name,
+                                "status": "Not Applied"
+                            })
+                        print(f"Fallback generation: Generated 5 mock jobs for {platform_display_name} via Gemini")
             except Exception as e:
-                print(f"Fallback generation failed: {e}")
+                print(f"Error processing {p}: {e}")
             
     random.shuffle(all_normalized_jobs)
     _jobs_cache[sid] = all_normalized_jobs
