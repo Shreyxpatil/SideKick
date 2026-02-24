@@ -4,6 +4,7 @@ from google.genai.client import Client
 from .state import NormalizedJobRecord
 import json
 import uuid
+import os
 
 def execute_llm_normalization_gemini(state: dict) -> dict:
     """LangGraph node utilizing Gemini structured output for data normalization."""
@@ -12,11 +13,12 @@ def execute_llm_normalization_gemini(state: dict) -> dict:
     errors = state.get("error_trace", [])
     retry_count = state.get("retry_count", 0) + 1
     
-    if not state.get("gemini_key"):
-        errors.append("Validation failed: No Gemini Key provided.")
+    target_key = os.environ.get("GEMINI_API_KEY")
+    if not target_key:
+        errors.append("Validation failed: No GEMINI_API_KEY environment variable provided.")
         return {"normalized_records": normalized_results, "error_trace": errors}
         
-    client = Client(api_key=state["gemini_key"])
+    client = Client(api_key=target_key)
     
     # We batch process up to 10 at a time to avoid huge payload limits
     batch_size = 10

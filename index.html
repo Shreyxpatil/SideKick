@@ -104,9 +104,6 @@
                 <div id="sessionBadge"
                     class="hidden sm:block text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full border border-gray-200 dark:border-gray-600">
                     Session: Starting...</div>
-                <div id="geminiChip"
-                    class="hidden sm:block text-xs font-medium px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800">
-                    Gemini: Missing</div>
 
                 <!-- Theme Toggle -->
                 <button onclick="toggleTheme()"
@@ -289,21 +286,6 @@
 
                 <div class="p-6">
                     <form id="profileForm" onsubmit="saveProfile(event)" class="space-y-8">
-                        <!-- 1. API Key -->
-                        <div
-                            class="bg-blue-50/50 dark:bg-indigo-900/20 p-4 rounded-xl border border-blue-100 dark:border-indigo-800/50">
-                            <label for="geminiKey"
-                                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gemini API Key
-                                <span class="text-red-500">*</span></label>
-                            <div class="flex gap-3">
-                                <input type="password" id="geminiKey"
-                                    class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-primary focus:ring-primary sm:text-sm border px-3 py-2"
-                                    placeholder="AI Studio Key">
-                                <button type="button" onclick="saveGeminiKey()"
-                                    class="bg-white dark:bg-gray-600 px-4 py-2 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors">Save
-                                    Key</button>
-                            </div>
-                        </div>
 
                         <!-- 2. Basic Info -->
                         <div
@@ -707,7 +689,7 @@
 
     </main>
 
-    <script src="/static/main.js"></script>
+    <script src="/static/main.js?v=2"></script>
 </body>
 
 </html>

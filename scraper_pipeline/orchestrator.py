@@ -2,6 +2,14 @@ from langgraph.graph import StateGraph, END
 from .state import PipelineState
 from .extractors.naukri import extract_naukri_jobs
 from .extractors.linkedin import extract_linkedin_jobs
+from .extractors.indeed import extract_indeed_jobs
+from .extractors.hirist import extract_hirist_jobs
+from .extractors.glassdoor import extract_glassdoor_jobs
+from .extractors.cutshort import extract_cutshort_jobs
+from .extractors.wellfound import extract_wellfound_jobs
+from .extractors.apna import extract_apna_jobs
+from .extractors.workindia import extract_workindia_jobs
+from .extractors.careersites import extract_careersites_jobs
 from .normalization import execute_llm_normalization_gemini
 import asyncio
 
@@ -12,20 +20,25 @@ def execute_platform_extraction(state: dict) -> dict:
     
     # Simple router loop to run the async extractors synchronously for the workflow
     if platform == "naukri":
-        # Run async function using asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        extracted = loop.run_until_complete(extract_naukri_jobs(state["target_role"], state["target_location"]))
-        
+        extracted = extract_naukri_jobs(state["target_role"], state["target_location"])
     elif platform == "linkedin":
-        # Run synchronous python requests function
         extracted = extract_linkedin_jobs(state["target_role"], state["target_location"])
-        
-    # Other platforms (Indeed, Glassdoor, etc.) would be added here in full production.
-    # We are demonstrating the core architecture requested.
+    elif platform == "indeed":
+        extracted = extract_indeed_jobs(state["target_role"], state["target_location"])
+    elif platform == "hirist":
+        extracted = extract_hirist_jobs(state["target_role"], state["target_location"])
+    elif platform == "glassdoor":
+        extracted = extract_glassdoor_jobs(state["target_role"], state["target_location"])
+    elif platform == "cutshort":
+        extracted = extract_cutshort_jobs(state["target_role"], state["target_location"])
+    elif platform == "wellfound":
+        extracted = extract_wellfound_jobs(state["target_role"], state["target_location"])
+    elif platform == "apna":
+        extracted = extract_apna_jobs(state["target_role"], state["target_location"])
+    elif platform == "workindia":
+        extracted = extract_workindia_jobs(state["target_role"], state["target_location"])
+    elif platform == "career site":
+        extracted = extract_careersites_jobs(state["target_role"])
         
     return {"extracted_records": extracted}
 

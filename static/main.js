@@ -7,11 +7,16 @@ let _selectedIds = new Set();
 let _sources = [];
 
 const SOURCES_LIST = [
-  { id: 'Naukri.com', icon: '🇮🇳' }, { id: 'LinkedIn', icon: '🔗' },
-  { id: 'Indeed', icon: '🏷' }, { id: 'Hirist', icon: '💼' },
-  { id: 'Glassdoor', icon: '🚪' }, { id: 'Cutshort', icon: '⚡' },
-  { id: 'Wellfound', icon: '🚀' }, { id: 'Apna', icon: '📱' },
-  { id: 'WorkIndia', icon: '🪪' }, { id: 'Career site', icon: '🏢' }
+  { id: 'Naukri', img: 'naukri.png' },
+  { id: 'LinkedIn', img: 'liinkedin.png' },
+  { id: 'Indeed', img: 'indeed.png' },
+  { id: 'Hirist', img: 'hirest.png' },
+  { id: 'Glassdoor', img: 'glassdoor.png' },
+  { id: 'Cutshort', img: 'cutshort.png' },
+  { id: 'Wellfound', img: 'wellfound.png' },
+  { id: 'Apna', img: 'apna.png' },
+  { id: 'WorkIndia', img: 'work india.png' },
+  { id: 'Careersite', img: 'carrier_site.png' }
 ];
 
 function toast(msg, type = 'info') {
@@ -148,12 +153,7 @@ async function loadProfile() {
     _sources = data.target_sources || [];
     updateSourcesUI();
 
-    if ($('geminiChip')) {
-      $('geminiChip').textContent = data.gemini_key_set ? 'Gemini: Set' : 'Gemini: Missing';
-      $('geminiChip').className = data.gemini_key_set
-        ? 'text-xs font-medium px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200'
-        : 'text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-700 border border-red-200';
-    }
+
 
     if (data.resume_filename) {
       $('resumeStatus').textContent = `✅ ${data.resume_filename} processed`;
@@ -166,16 +166,7 @@ async function loadProfile() {
   }
 }
 
-async function saveGeminiKey() {
-  const key = $('geminiKey').value;
-  if (!key) return;
-  const form = new FormData(); form.append('gemini_key', key);
-  try {
-    await fetch(`/api/keys/${S.sid}`, { method: 'POST', body: form });
-    toast('✅ API Key saved', 'success');
-    loadProfile();
-  } catch (e) { toast('❌ Error saving key', 'error'); }
-}
+
 
 async function saveProfile(e) {
   e.preventDefault();
@@ -223,9 +214,11 @@ function renderSourcesGrid() {
   grid.innerHTML = SOURCES_LIST.map(s => `
         <label class="cursor-pointer">
             <input type="checkbox" value="${s.id}" class="peer sr-only" onchange="toggleSource(this)">
-            <div class="px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 peer-checked:border-primary peer-checked:bg-blue-50/50 peer-checked:text-primary transition-all flex flex-col items-center gap-1 text-center">
-                <span class="text-xl">${s.icon}</span>
-                <span>${s.id}</span>
+            <div class="px-4 py-3 bg-white border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 peer-checked:border-primary peer-checked:bg-blue-50/50 dark:peer-checked:bg-blue-900/40 peer-checked:text-primary transition-all flex flex-col items-center gap-2 text-center h-full justify-center">
+                <div class="bg-white p-1 rounded-md shadow-sm h-10 w-10 flex items-center justify-center">
+                    <img src="/static/images/logos/${s.img}" class="h-8 w-auto object-contain max-w-[32px]" alt="${s.id} Logo" onerror="this.onerror=null; this.src='/static/logowithtext.png';">
+                </div>
+                <span class="mt-1">${s.id}</span>
             </div>
         </label>
     `).join('');
@@ -437,30 +430,8 @@ if (suggestFormWeb) {
     const rolesList = $('rolesListWeb');
 
     try {
-      // 1. Ensure Gemini Key exists in this session
-      const checkRes = await fetch(`/api/session/${S.sid}`);
-      const checkData = await checkRes.json();
-
-      // The backend now exposes gemini_key at the root of the session object
-      let geminiObj = checkData.gemini_key;
-
-      if (!geminiObj) {
-        geminiObj = prompt("Please provide a Gemini API Key to use this feature (it won't be saved permanently without your permission):");
-        if (!geminiObj) {
-          toast('Gemini SDK key is required.', 'error');
-          return;
-        }
-      }
-
-      btn.disabled = true;
-      btnText.textContent = 'Analyzing Resume...';
-      btn.classList.add('opacity-75');
-      resultsContainer.classList.add('hidden');
-      rolesList.innerHTML = '';
-
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
-      formData.append('gemini_key', geminiObj);
 
       // Pass the current search role as context if it exists
       const baseRoleInput = $('baseRole');

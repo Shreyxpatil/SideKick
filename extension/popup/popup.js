@@ -304,17 +304,7 @@ $('suggestForm')?.addEventListener('submit', async (e) => {
     const fileInput = $('resumeFile');
     if (!fileInput.files.length) return;
 
-    // Grab the user's gemini key from local storage if available. 
-    // This allows the extension to query without needing a backend session.
     const { profileData } = await chrome.storage.local.get(['profileData']);
-    const geminiKey = profileData?.geminiKey;
-
-    // Quick prompt if not stored
-    const finalKey = geminiKey || prompt("Please provide a Gemini API Key to use this feature:");
-    if (!finalKey) {
-        toast('Gemini SDK key is required.', 'error');
-        return;
-    }
 
     const btn = $('suggestBtn');
     const btnText = $('suggestBtnText');
@@ -332,7 +322,6 @@ $('suggestForm')?.addEventListener('submit', async (e) => {
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
-        formData.append('gemini_key', finalKey);
 
         const res = await fetch('http://localhost:8000/api/suggest-roles', {
             method: 'POST',

@@ -29,4 +29,4 @@ class PipelineState(TypedDict):
     ingestion_success: bool
     error_trace: Annotated[List[str], operator.add]
     retry_count: Annotated[int, operator.add]
-    gemini_key: str
+
