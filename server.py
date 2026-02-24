@@ -47,15 +47,7 @@ Base = declarative_base()
 class DBProfile(Base):
     __tablename__ = "profiles"
     session_id = Column(String, primary_key=True, index=True)
-    full_name = Column(String, default="")
-    email = Column(String, default="")
-    phone = Column(String, default="")
-    years_experience = Column(Integer, default=0)
-    linkedin_url = Column(String, default="")
-    portfolio_url = Column(String, default="")
-    base_job_role = Column(String, default="")
-    target_metro_region = Column(String, default="")
-    target_sources = Column(String, default="[]") # JSON string
+    profile_json = Column(String, default="{}")
     resume_filename = Column(String, default="")
     resume_char_count = Column(Integer, default=0)
     gemini_key = Column(String, default="")
@@ -81,36 +73,7 @@ _jobs_cache = {}
 # ---------------------------------------------------------
 # Pydantic Schemas with Validation
 # ---------------------------------------------------------
-class ProfileUpdate(BaseModel):
-    full_name: str | None = Field(None, min_length=2)
-    email: str | None = None
-    phone: str | None = None
-    years_experience: int | None = Field(None, ge=0, le=50)
-    linkedin_url: str | None = None
-    portfolio_url: str | None = None
-    base_job_role: str | None = None
-    target_metro_region: str | None = None
-    target_sources: list[str] | None = None
-    
-    @validator('phone')
-    def validate_phone(cls, v):
-        if v:
-            # Only allow numbers, +, -, (), and spaces
-            if not re.match(r'^[\d\+\-\(\)\s]+$', v):
-                raise ValueError('Invalid characters in phone number')
-        return v
-        
-    @validator('email')
-    def validate_email(cls, v):
-        if v and '@' not in v:
-            raise ValueError('Invalid email address')
-        return v
-        
-    @validator('linkedin_url', 'portfolio_url')
-    def validate_urls(cls, v):
-        if v and not v.startswith('http'):
-            raise ValueError('URL must start with http:// or https://')
-        return v
+# Pydantic schema validation removed in favor of dynamic JSON storage
 
 # ─────────────────────────────────────────────
 #  Routes — static
@@ -141,33 +104,26 @@ def get_session(sid: str):
         prof = db.query(DBProfile).filter(DBProfile.session_id == sid).first()
         if not prof:
             raise HTTPException(status_code=404, detail="Session not found")
+        try:
+            profile_data = json.loads(prof.profile_json) if prof.profile_json else {}
+        except:
+            profile_data = {}
+
         return {
             "gemini_key_set": bool(prof.gemini_key),
             "gemini_key": prof.gemini_key,
             "apollo_key_set": bool(prof.apollo_key),
             "resume_filename": prof.resume_filename,
             "resume_char_count": prof.resume_char_count,
-            "full_name": prof.full_name,
-            "email": prof.email,
-            "phone": prof.phone,
-            "years_experience": prof.years_experience,
-            "linkedin_url": prof.linkedin_url,
-            "portfolio_url": prof.portfolio_url,
-            "base_job_role": prof.base_job_role,
-            "target_metro_region": prof.target_metro_region,
-            "target_sources": json.loads(prof.target_sources) if prof.target_sources else []
+            **profile_data
         }
     finally:
         db.close()
 
 @app.post("/api/session/{sid}")
 async def update_session(sid: str, req: Request):
-    """Update profile using strict Pydantic validation."""
+    """Update profile using dynamic JSON storage."""
     data = await req.json()
-    try:
-        validated = ProfileUpdate(**data)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
         
     db = SessionLocal()
     try:
@@ -176,12 +132,14 @@ async def update_session(sid: str, req: Request):
             prof = DBProfile(session_id=sid)
             db.add(prof)
             
-        update_data = validated.dict(exclude_unset=True)
-        if 'target_sources' in update_data:
-            prof.target_sources = json.dumps(update_data.pop('target_sources'))
+        try:
+            existing_data = json.loads(prof.profile_json) if prof.profile_json else {}
+        except:
+            existing_data = {}
             
-        for k, v in update_data.items():
-            setattr(prof, k, v)
+        existing_data.update(data)
+        prof.profile_json = json.dumps(existing_data)
+        
         db.commit()
         return {"ok": True}
     finally:

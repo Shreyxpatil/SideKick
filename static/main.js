@@ -72,16 +72,78 @@ async function initSession() {
   renderSourcesGrid();
 }
 
+const FIELDS = [
+  'firstName', 'lastName', 'email', 'phone', 'city', 'state', 'country', 'zipCode',
+  'linkedinUrl', 'portfolioUrl', 'githubUrl',
+  'workAuth', 'visaSponsorship', 'backgroundCheck', 'age18',
+  'educationLevel', 'university', 'degree', 'gradYear', 'yearsExp', 'salaryExp', 'noticePeriod', 'relocate',
+  'eeoGender', 'eeoRace', 'eeoVeteran', 'prevEmployment', 'nonCompete', 'contactEmployer'
+];
+
+let expCount = 0;
+
+function addExperienceBlock(data = null) {
+  const container = $('experienceContainer');
+  if (!container) return;
+
+  expCount++;
+  const id = expCount;
+
+  const div = document.createElement('div');
+  div.className = 'exp-block p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3 relative bg-white dark:bg-gray-800';
+  div.innerHTML = `
+        <button type="button" onclick="this.parentElement.remove()" class="absolute top-2 right-2 text-red-500 hover:text-red-700 text-sm font-bold">&times;</button>
+        <div class="grid grid-cols-2 gap-3">
+            <input type="text" class="exp-title block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" placeholder="Job Title" value="${data && data.title ? data.title : ''}">
+            <input type="text" class="exp-company block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" placeholder="Company" value="${data && data.company ? data.company : ''}">
+            <input type="text" class="exp-start block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" placeholder="Start Date (MM/YYYY)" value="${data && data.start ? data.start : ''}">
+            <input type="text" class="exp-end block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" placeholder="End Date" value="${data && data.end ? data.end : ''}">
+            <div class="col-span-2 flex items-center gap-2 mt-1">
+                <input type="checkbox" class="exp-current rounded border-gray-300 text-primary focus:ring-primary h-4 w-4" id="curr_${id}" ${data && data.current ? 'checked' : ''}>
+                <label for="curr_${id}" class="text-xs font-medium text-gray-600 dark:text-gray-400">I currently work here</label>
+            </div>
+            <textarea class="exp-desc col-span-2 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" placeholder="Description of role..." rows="2">${data && data.description ? data.description : ''}</textarea>
+        </div>
+    `;
+  container.appendChild(div);
+}
+
+function getExperiences() {
+  const blocks = document.querySelectorAll('.exp-block');
+  const exps = [];
+  blocks.forEach(b => {
+    exps.push({
+      title: b.querySelector('.exp-title').value,
+      company: b.querySelector('.exp-company').value,
+      start: b.querySelector('.exp-start').value,
+      end: b.querySelector('.exp-end').value,
+      current: b.querySelector('.exp-current').checked,
+      description: b.querySelector('.exp-desc').value
+    });
+  });
+  return exps;
+}
+
 async function loadProfile() {
   try {
     const res = await fetch(`/api/session/${S.sid}`);
     if (!res.ok) throw new Error("Could not load profile");
     const data = await res.json();
 
-    const fields = ['fullName', 'email', 'phone', 'yearsExp', 'linkedinUrl', 'portfolioUrl', 'baseRole', 'metroRegion'];
-    const dbFields = ['full_name', 'email', 'phone', 'years_experience', 'linkedin_url', 'portfolio_url', 'base_job_role', 'target_metro_region'];
+    FIELDS.forEach(f => {
+      if ($(f) && data[f]) $(f).value = data[f];
+    });
 
-    fields.forEach((f, i) => { if ($(f) && data[dbFields[i]]) $(f).value = data[dbFields[i]]; });
+    if ($('baseRole') && data.base_job_role) $('baseRole').value = data.base_job_role;
+    if ($('metroRegion') && data.target_metro_region) $('metroRegion').value = data.target_metro_region;
+
+    const expContainer = $('experienceContainer');
+    if (expContainer) {
+      expContainer.innerHTML = '';
+      if (data.experiences && Array.isArray(data.experiences)) {
+        data.experiences.forEach(exp => addExperienceBlock(exp));
+      }
+    }
 
     _sources = data.target_sources || [];
     updateSourcesUI();
@@ -117,14 +179,15 @@ async function saveGeminiKey() {
 
 async function saveProfile(e) {
   e.preventDefault();
-  const payload = {
-    full_name: $('fullName').value,
-    email: $('email').value,
-    phone: $('phone').value,
-    years_experience: parseInt($('yearsExp').value, 10),
-    linkedin_url: $('linkedinUrl').value,
-    portfolio_url: $('portfolioUrl').value
-  };
+  const payload = {};
+  FIELDS.forEach(f => {
+    if ($(f)) payload[f] = $(f).value;
+  });
+
+  if ($('baseRole')) payload.base_job_role = $('baseRole').value;
+  if ($('metroRegion')) payload.target_metro_region = $('metroRegion').value;
+
+  payload.experiences = getExperiences();
 
   try {
     const res = await fetch(`/api/session/${S.sid}`, {
