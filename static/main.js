@@ -24,7 +24,7 @@ function toast(msg, type = 'info') {
 }
 
 function switchTab(tabId) {
-  ['profile', 'search', 'applied', 'suggest'].forEach(t => {
+  ['profile', 'search', 'applied', 'suggest', 'analyzer'].forEach(t => {
     const view = $(`view-${t}`);
     const tab = $(`tab-${t}`);
     if (view) view.classList.add('hidden');
@@ -521,4 +521,134 @@ if (suggestFormWeb) {
       btn.classList.remove('opacity-75');
     }
   });
+}
+
+// ─────────────────────────────────────────────
+//  Job Analyzer (Phase 14)
+// ─────────────────────────────────────────────
+
+async function runAnalyzer(type) {
+  const jd = $('analyzerJd').value.trim();
+  if (!jd) return toast('Please paste a job description first', 'error');
+
+  const profile_data = {};
+  FIELDS.forEach(f => {
+    if ($(f)) profile_data[f] = $(f).value;
+  });
+  profile_data.experiences = getExperiences();
+
+  if ($('skills')) profile_data.skills = $('skills').value;
+  if ($('baseRole')) profile_data.base_job_role = $('baseRole').value;
+  if ($('metroRegion')) profile_data.target_metro_region = $('metroRegion').value;
+
+  const out = $('analyzerOutput');
+  const spinner = $('analyzerSpinner');
+  spinner.classList.remove('hidden');
+
+  if (type === 'vibe') {
+    out.innerHTML = `<div class="h-full flex items-center justify-center text-gray-500">Scanning JD for Red Flags and missing Skills...</div>`;
+  } else {
+    out.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-gray-500 gap-2"><div class="animate-pulse">Gemini is thinking...</div><div class="text-xs max-w-sm text-center">Crafting hyper-personalized response based on your profile.</div></div>`;
+  }
+
+  try {
+    if (type === 'vibe') {
+      const res = await fetch(`/api/ai/analyze-job/${S.sid}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_description: jd.substring(0, 5000), profile_data })
+      });
+      const data = await res.json();
+
+      let html = `
+        <div class="mb-5 flex items-center justify-between bg-gray-100 dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <span class="font-bold text-gray-700 dark:text-gray-300">Match Score</span>
+          <span class="text-4xl font-black tracking-tight ${data.match_score > 75 ? 'text-green-500' : data.match_score > 50 ? 'text-amber-500' : 'text-red-500'}">${data.match_score}%</span>
+        </div>
+      `;
+
+      if (data.missing_keywords && data.missing_keywords.length > 0) {
+        html += `
+          <div class="mb-5">
+            <h4 class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>Skill Gaps Identified</h4>
+            <div class="flex flex-wrap gap-2">
+              ${data.missing_keywords.map(kw => `<span class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800/50 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm">${kw}</span>`).join('')}
+            </div>
+          </div>
+        `;
+      }
+      if (data.red_flags && data.red_flags.length > 0) {
+        html += `
+          <div class="mt-6 border-t border-amber-200 dark:border-amber-900/50 pt-5">
+            <h4 class="text-xs font-bold text-amber-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              Toxic Workplace Warnings
+            </h4>
+            <ul class="space-y-2">
+              ${data.red_flags.map(f => `<li class="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-100 dark:border-amber-800/30">
+                <span class="text-amber-500 mt-0.5">•</span>
+                <span class="leading-relaxed">${f}</span>
+              </li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+      out.innerHTML = html;
+
+    } else if (type === 'prep') {
+      const res = await fetch(`/api/ai/interview-prep/${S.sid}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_description: jd.substring(0, 5000) })
+      });
+      const data = await res.json();
+
+      out.innerHTML = `
+        <h4 class="text-sm font-bold text-blue-600 dark:text-blue-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          Highly Probable Technical Questions
+        </h4>
+        <div class="space-y-4">
+          ${data.questions.map((q, i) => `
+            <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:shadow-md">
+              <p class="font-bold text-gray-900 dark:text-white mb-3 text-sm leading-relaxed"><span class="text-blue-500 mr-2 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs">Q${i + 1}</span> ${q.question}</p>
+              <div class="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                <p class="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-1">How to answer</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">${q.answer_guide}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      const promptContext = type === 'cover' ? 'Cover Letter' : 'Recruiter DM';
+      const color = type === 'cover' ? 'emerald' : 'purple';
+      const res = await fetch(`/api/ai/generate-text/${S.sid}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_context: promptContext, job_description: jd.substring(0, 5000), profile_data })
+      });
+      const data = await res.json();
+
+      out.innerHTML = `
+        <div class="flex items-center justify-between mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+          <h4 class="text-sm font-bold text-${color}-600 dark:text-${color}-400 uppercase tracking-widest flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            Generated ${promptContext}
+          </h4>
+          <button onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.innerText); toast('Copied to clipboard!', 'success')" class="text-xs font-medium bg-${color}-50 hover:bg-${color}-100 dark:bg-${color}-900/20 dark:hover:bg-${color}-900/40 text-${color}-700 dark:text-${color}-300 px-3 py-1.5 rounded-lg transition-colors border border-${color}-200 dark:border-${color}-800/50 shadow-sm flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+            Copy
+          </button>
+        </div>
+        <div class="bg-gray-100 dark:bg-[#0f172a] p-5 rounded-xl font-mono text-[13px] whitespace-pre-wrap leading-relaxed text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700 shadow-inner">${data.text}</div>
+      `;
+    }
+  } catch (err) {
+    toast("Generation failed. Double check your Gemini API Key is saved in Profile.", "error");
+    out.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-red-500 gap-2">
+      <svg class="w-10 h-10 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+      <span class="font-bold">Error generating AI response.</span>
+      <span class="text-xs text-red-400">Did you save your Gemini API Key?</span>
+    </div>`;
+  } finally {
+    spinner.classList.add('hidden');
+  }
 }

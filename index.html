@@ -145,6 +145,8 @@
                 class="tab-inactive pb-4 px-1 text-sm focus:outline-none transition-colors">Applied Roles</button>
             <button onclick="switchTab('suggest')" id="tab-suggest"
                 class="tab-inactive pb-4 px-1 text-sm focus:outline-none transition-colors">Role Matcher</button>
+            <button onclick="switchTab('analyzer')" id="tab-analyzer"
+                class="tab-inactive pb-4 px-1 text-sm focus:outline-none transition-colors">Job Analyzer</button>
         </div>
 
         <div id="toastContainer"></div>
@@ -203,6 +205,71 @@
             </div>
         </div>
 
+        <!-- ─── JOB ANALYZER VIEW ─── -->
+        <div id="view-analyzer" class="hidden space-y-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">AI Job Analyzer</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Paste a Job Description to get an instant Match
+                    Score or generate custom documents.</p>
+            </div>
+
+            <div
+                class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 max-w-6xl mx-auto flex flex-col md:flex-row gap-8">
+
+                <!-- Left: JD Input -->
+                <div class="flex-1 flex flex-col space-y-4">
+                    <label class="block text-sm font-bold text-gray-900 dark:text-white">Job Description</label>
+                    <textarea id="analyzerJd"
+                        class="flex-1 min-h-[300px] w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-white shadow-sm border p-4 text-sm focus:ring-primary focus:border-primary transition-colors"
+                        placeholder="Paste the full job description here..."></textarea>
+
+                    <div class="grid grid-cols-2 gap-3 mt-4">
+                        <button type="button" onclick="runAnalyzer('vibe')"
+                            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition-transform transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                            <span>🔍 Vibe Check</span>
+                        </button>
+                        <button type="button" onclick="runAnalyzer('prep')"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition-transform transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                            <span>🎯 Interview Prep</span>
+                        </button>
+                        <button type="button" onclick="runAnalyzer('cover')"
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition-transform transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                            <span>📝 Cover Letter</span>
+                        </button>
+                        <button type="button" onclick="runAnalyzer('dm')"
+                            class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition-transform transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                            <span>💬 Recruiter DM</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: Output -->
+                <div
+                    class="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900/80 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                    <div
+                        class="flex items-center justify-between mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+                        <h3 class="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide">Analysis
+                            Output</h3>
+                        <div id="analyzerSpinner"
+                            class="hidden w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin">
+                        </div>
+                    </div>
+                    <div id="analyzerOutput"
+                        class="flex-1 overflow-y-auto w-full prose dark:prose-invert prose-sm max-w-none text-gray-700 dark:text-gray-300 h-[400px]">
+                        <div class="h-full flex flex-col items-center justify-center text-center opacity-50">
+                            <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z">
+                                </path>
+                            </svg>
+                            <p>Ready to analyze.<br>Paste a job description and select an action.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <!-- ─── PROFILE VIEW ─── -->
         <div id="view-profile" class="hidden space-y-6">
             <div class="flex items-center justify-between mb-4">
@@ -223,107 +290,274 @@
                 <div class="p-6">
                     <form id="profileForm" onsubmit="saveProfile(event)" class="space-y-8">
                         <!-- 1. API Key -->
-                        <div class="bg-blue-50/50 dark:bg-indigo-900/20 p-4 rounded-xl border border-blue-100 dark:border-indigo-800/50">
-                            <label for="geminiKey" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gemini API Key <span class="text-red-500">*</span></label>
+                        <div
+                            class="bg-blue-50/50 dark:bg-indigo-900/20 p-4 rounded-xl border border-blue-100 dark:border-indigo-800/50">
+                            <label for="geminiKey"
+                                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gemini API Key
+                                <span class="text-red-500">*</span></label>
                             <div class="flex gap-3">
-                                <input type="password" id="geminiKey" class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-primary focus:ring-primary sm:text-sm border px-3 py-2" placeholder="AI Studio Key">
-                                <button type="button" onclick="saveGeminiKey()" class="bg-white dark:bg-gray-600 px-4 py-2 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors">Save Key</button>
+                                <input type="password" id="geminiKey"
+                                    class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-primary focus:ring-primary sm:text-sm border px-3 py-2"
+                                    placeholder="AI Studio Key">
+                                <button type="button" onclick="saveGeminiKey()"
+                                    class="bg-white dark:bg-gray-600 px-4 py-2 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors">Save
+                                    Key</button>
                             </div>
                         </div>
 
                         <!-- 2. Basic Info -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">1. Basic Personal & Contact</h4>
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">1. Basic Personal & Contact
+                            </h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">First Name</label><input type="text" id="firstName" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Last Name</label><input type="text" id="lastName" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" id="email" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label><input type="tel" id="phone" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">City</label><input type="text" id="city" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">State</label><input type="text" id="state" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Country</label><input type="text" id="country" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Zip / Postal Code</label><input type="text" id="zipCode" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">First
+                                        Name</label><input type="text" id="firstName"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Last
+                                        Name</label><input type="text" id="lastName"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input
+                                        type="email" id="email"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label><input
+                                        type="tel" id="phone"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">City</label><input
+                                        type="text" id="city"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">State</label><input
+                                        type="text" id="state"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Country</label><input
+                                        type="text" id="country"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Zip /
+                                        Postal Code</label><input type="text" id="zipCode"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
                             </div>
                         </div>
 
                         <!-- 3. Professional Links -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
                             <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">2. Professional Links</h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">LinkedIn URL</label><input type="url" id="linkedinUrl" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio / Website</label><input type="url" id="portfolioUrl" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div class="col-span-1 md:col-span-2"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">GitHub / GitLab URL</label><input type="url" id="githubUrl" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">LinkedIn
+                                        URL</label><input type="url" id="linkedinUrl"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio
+                                        / Website</label><input type="url" id="portfolioUrl"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div class="col-span-1 md:col-span-2"><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">GitHub /
+                                        GitLab URL</label><input type="url" id="githubUrl"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
                             </div>
-                            
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mt-6 mb-2">Resume (PDF)</label>
-                            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-lg hover:border-primary transition-colors bg-white dark:bg-gray-900/50" id="dropZone">
+
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mt-6 mb-2">Resume
+                                (PDF)</label>
+                            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-lg hover:border-primary transition-colors bg-white dark:bg-gray-900/50"
+                                id="dropZone">
                                 <div class="space-y-1 text-center">
-                                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none"
+                                        viewBox="0 0 48 48">
+                                        <path
+                                            d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                                     </svg>
                                     <div class="flex text-sm text-gray-600 dark:text-gray-400 justify-center">
-                                        <label for="resumeFile" class="relative cursor-pointer bg-transparent rounded-md font-medium text-primary hover:text-primaryHover focus-within:outline-none">
-                                            <span>Upload a file</span><input id="resumeFile" name="resumeFile" type="file" class="sr-only" accept=".pdf" onchange="handleResumeUpload(this.files[0])">
+                                        <label for="resumeFile"
+                                            class="relative cursor-pointer bg-transparent rounded-md font-medium text-primary hover:text-primaryHover focus-within:outline-none">
+                                            <span>Upload a file</span><input id="resumeFile" name="resumeFile"
+                                                type="file" class="sr-only" accept=".pdf"
+                                                onchange="handleResumeUpload(this.files[0])">
                                         </label>
                                         <p class="pl-1">or drag and drop</p>
                                     </div>
                                     <p class="text-xs text-gray-500">PDF up to 10MB</p>
                                 </div>
                             </div>
-                            <div id="resumeStatus" class="mt-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium hidden">✅ PDF processed</div>
+                            <div id="resumeStatus"
+                                class="mt-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium hidden">✅ PDF
+                                processed</div>
                         </div>
 
                         <!-- 4. Knockout Questions -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">3. Knockout Questions (Yes/No)</h4>
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">3. Knockout Questions
+                                (Yes/No)</h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Authorized to work?</label><select id="workAuth" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Yes">Yes</option><option value="No">No</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Require Visa Sponsorship?</label><select id="visaSponsorship" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="No">No</option><option value="Yes">Yes</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Submit to background check?</label><select id="backgroundCheck" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Yes">Yes</option><option value="No">No</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Are you 18 or older?</label><select id="age18" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Yes">Yes</option><option value="No">No</option></select></div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Authorized to
+                                        work?</label><select id="workAuth"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Require
+                                        Visa Sponsorship?</label><select id="visaSponsorship"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Submit to
+                                        background check?</label><select id="backgroundCheck"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Are you
+                                        18 or older?</label><select id="age18"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select></div>
                             </div>
                         </div>
-                        
-                        <!-- 5. Education & Preferences -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">4. Education & Preferences</h4>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Highest Education</label><select id="educationLevel" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Bachelors">Bachelor's Degree</option><option value="Masters">Master's Degree</option><option value="PhD">PhD</option><option value="High School">High School</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">University / College</label><input type="text" id="university" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Degree / Major</label><input type="text" id="degree" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Graduation Year</label><input type="number" id="gradYear" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                
-                                <div class="col-span-1 md:col-span-2 mt-2"><hr class="border-gray-200 dark:border-gray-700"></div>
 
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Overall Years of Exp</label><input type="number" id="yearsExp" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" value="0"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Expectations</label><input type="number" id="salaryExp" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Notice Period (Days)</label><input type="number" id="noticePeriod" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm" value="30"></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Willing to Relocate?</label><select id="relocate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Yes">Yes</option><option value="No">No</option></select></div>
+                        <!-- 5. Education & Preferences -->
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">4. Education & Preferences
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Highest
+                                        Education</label><select id="educationLevel"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Bachelors">Bachelor's Degree</option>
+                                        <option value="Masters">Master's Degree</option>
+                                        <option value="PhD">PhD</option>
+                                        <option value="High School">High School</option>
+                                    </select></div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">University /
+                                        College</label><input type="text" id="university"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Degree /
+                                        Major</label><input type="text" id="degree"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Graduation
+                                        Year</label><input type="number" id="gradYear"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+
+                                <div class="col-span-1 md:col-span-2 mt-2">
+                                    <hr class="border-gray-200 dark:border-gray-700">
+                                </div>
+
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Overall
+                                        Years of Exp</label><input type="number" id="yearsExp"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"
+                                        value="0"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary
+                                        Expectations</label><input type="number" id="salaryExp"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                </div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Notice
+                                        Period (Days)</label><input type="number" id="noticePeriod"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"
+                                        value="30"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Willing
+                                        to Relocate?</label><select id="relocate"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select></div>
                             </div>
                         </div>
 
                         <!-- 6. EEO Questions & Legal -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
                             <h4 class="text-md font-bold text-gray-900 dark:text-white mb-4">5. EEO & Legal Context</h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Gender</label><select id="eeoGender" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Prefer not to say">Prefer not to say</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Race/Ethnicity</label><select id="eeoRace" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Prefer not to say">Prefer not to say</option><option value="Asian">Asian</option><option value="White">White</option><option value="Black">Black</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Veteran Status</label><select id="eeoVeteran" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Prefer not to say">Prefer not to say</option><option value="No">No</option><option value="Yes">Yes</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Disability Status</label><select id="eeoDisability" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="Prefer not to say">Prefer not to say</option><option value="No">No</option><option value="Yes">Yes</option></select></div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Gender</label><select
+                                        id="eeoGender"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </select></div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Race/Ethnicity</label><select
+                                        id="eeoRace"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                        <option value="Asian">Asian</option>
+                                        <option value="White">White</option>
+                                        <option value="Black">Black</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Veteran
+                                        Status</label><select id="eeoVeteran"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
+                                <div><label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Disability
+                                        Status</label><select id="eeoDisability"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
 
-                                <div class="col-span-1 md:col-span-2 mt-2"><hr class="border-gray-200 dark:border-gray-700"></div>
+                                <div class="col-span-1 md:col-span-2 mt-2">
+                                    <hr class="border-gray-200 dark:border-gray-700">
+                                </div>
 
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Previous Employment Here?</label><select id="prevEmployment" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="No">No</option><option value="Yes">Yes</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Under Non-Compete?</label><select id="nonCompete" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="No">No</option><option value="Yes">Yes</option></select></div>
-                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Can Contact Current Employer?</label><select id="contactEmployer" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Previous
+                                        Employment Here?</label><select id="prevEmployment"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Under
+                                        Non-Compete?</label><select id="nonCompete"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
+                                <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Can
+                                        Contact Current Employer?</label><select id="contactEmployer"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm border px-3 py-2 sm:text-sm">
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes</option>
+                                    </select></div>
                             </div>
                         </div>
 
                         <!-- 7. Repeating Experience Blocks -->
-                        <div class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800/80 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
                             <div class="flex items-center justify-between mb-4">
                                 <h4 class="text-md font-bold text-gray-900 dark:text-white">6. Work Experience</h4>
-                                <button type="button" onclick="addExperienceBlock()" class="text-sm bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-md font-medium transition-colors border border-indigo-200 dark:border-indigo-500/20 shadow-sm">+ Add Experience</button>
+                                <button type="button" onclick="addExperienceBlock()"
+                                    class="text-sm bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-md font-medium transition-colors border border-indigo-200 dark:border-indigo-500/20 shadow-sm">+
+                                    Add Experience</button>
                             </div>
                             <div id="experienceContainer" class="space-y-4">
                                 <!-- JS will inject experience blocks here -->
@@ -331,8 +565,13 @@
                         </div>
 
                         <div class="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700 mt-6">
-                            <button type="submit" class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primaryHover transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                            <button type="submit"
+                                class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primaryHover transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4">
+                                    </path>
+                                </svg>
                                 Save Profile Data
                             </button>
                         </div>
