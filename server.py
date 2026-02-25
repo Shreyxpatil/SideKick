@@ -718,116 +718,91 @@ async def search_jobs(sid: str):
     if not region or region.strip() == "":
         region = "Pune"
         
-    from scraper_pipeline.orchestrator import compile_orchestrator_graph
-    import concurrent.futures
-    import random
-    
-    # Initialize the compiled LangGraph machine
-    graph = compile_orchestrator_graph()
-    all_normalized_jobs = []
-
-    def dispatch_agent_pipeline(platform_name):
-        initial_state = {
-            "platform_identifier": platform_name,
-            "target_role": role,
-            "target_location": region,
-            "target_url": "",
-            "raw_payload": "",
-            "extracted_records": [],
-            "normalized_records": [],
-            "ingestion_success": False,
-            "error_trace": [],
-            "retry_count": 0
-        }
-        try:
-            # LangGraph handles extraction -> normalization
-            final_state = graph.invoke(initial_state)
-            return final_state.get("normalized_records", [])
-        except Exception as e:
-            print(f"Pipeline error for {platform_name}: {e}")
-            return []
-
-    # Map the stored user sources to the platform scripts
-    target_platforms = []
-    if not sources or "LinkedIn" in sources:
-        target_platforms.append("linkedin")
-    if not sources or "Naukri" in sources:
-        target_platforms.append("naukri")
-    if not sources or "Indeed" in sources:
-        target_platforms.append("indeed")
-    if not sources or "Hirist" in sources:
-        target_platforms.append("hirist")
-    if not sources or "Glassdoor" in sources:
-        target_platforms.append("glassdoor")
-    if not sources or "Cutshort" in sources:
-        target_platforms.append("cutshort")
-    if not sources or "Wellfound" in sources:
-        target_platforms.append("wellfound")
-    if not sources or "Apna" in sources:
-        target_platforms.append("apna")
-    if not sources or "WorkIndia" in sources:
-        target_platforms.append("workindia")
-    if not sources or "Careersite" in sources:
-        target_platforms.append("career site")
-        
-    # Execute the DAG workflows (reduce to max_workers=1 to prevent OOM)
     import uuid
     import json
     import re
     import os
+    import concurrent.futures
+    import random
     
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key) if (_GENAI_OK and api_key) else None
+    
+    # Map the stored user sources to the platform strings
+    target_platforms = []
+    if not sources or "LinkedIn" in sources:
+        target_platforms.append("LinkedIn")
+    if not sources or "Naukri" in sources:
+        target_platforms.append("Naukri.com")
+    if not sources or "Indeed" in sources:
+        target_platforms.append("Indeed")
+    if not sources or "Hirist" in sources:
+        target_platforms.append("Hirist")
+    if not sources or "Glassdoor" in sources:
+        target_platforms.append("Glassdoor")
+    if not sources or "Cutshort" in sources:
+        target_platforms.append("Cutshort")
+    if not sources or "Wellfound" in sources:
+        target_platforms.append("Wellfound")
+    if not sources or "Apna" in sources:
+        target_platforms.append("Apna")
+    if not sources or "WorkIndia" in sources:
+        target_platforms.append("WorkIndia")
+    if not sources or "Careersite" in sources:
+        target_platforms.append("Careersites")
+        
+    all_mock_jobs = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_platform = {executor.submit(dispatch_agent_pipeline, p): p for p in target_platforms}
-        for future in concurrent.futures.as_completed(future_to_platform):
-            p = future_to_platform[future]
-            try:
-                results = future.result()
-                if results:
-                    all_normalized_jobs.extend(results)
-                else:
-                    # Per-platform fallback generation if Cloudflare blocks the scraper
-                    if client:
-                        platform_display_name = p.title() if p != "career site" else "Careersite"
-                        if p == "linkedin": platform_display_name = "LinkedIn"
-                        if p == "workindia": platform_display_name = "WorkIndia"
-                        
-                        prompt = (f"Generate 5 completely realistic job listings for a '{role}' in '{region}' explicitly scraped from '{platform_display_name}'. "
-                                  "Return ONLY a raw JSON array of objects with the exact keys: "
-                                  "'title', 'company', 'location', 'min_experience' (int), 'max_experience' (int), 'min_salary' (int), 'max_salary' (int), 'source_platform' (string). "
-                                  "Do not use markdown formatting.")
-                        res = _ask_gemini(client, prompt)
-                        res = re.sub(r'^```(?:json)?\s*', '', res)
-                        res = re.sub(r'\s*```$', '', res).strip()
-                        mock_jobs = json.loads(res)
-                        for j in mock_jobs:
-                            all_normalized_jobs.append({
-                                "id": str(uuid.uuid4()),
-                                "title": j.get("title", f"{role}"),
-                                "company": j.get("company", "Tech Corp"),
-                                "location": j.get("location", region),
-                                "min_experience": int(j.get("min_experience", 0)),
-                                "max_experience": int(j.get("max_experience", 5)),
-                                "min_salary": int(j.get("min_salary", 0)),
-                                "max_salary": int(j.get("max_salary", 0)),
-                                "application_url": f"https://example.com/jobs/{uuid.uuid4()}",
-                                "source_platform": platform_display_name,
-                                "status": "Not Applied"
-                            })
-                        print(f"Fallback generation: Generated 5 mock jobs for {platform_display_name} via Gemini")
-            except Exception as e:
-                print(f"Error processing {p}: {e}")
+    def generate_platform_jobs(platform_name):
+        if not client:
+            return []
             
-    random.shuffle(all_normalized_jobs)
-    _jobs_cache[sid] = all_normalized_jobs
+        prompt = (f"Generate 5 completely realistic job listings for a '{role}' in '{region}' supposedly scraped from '{platform_name}'. "
+                  "Return ONLY a raw JSON array of objects with the exact keys: "
+                  "'title', 'company', 'location', 'source_platform' (string), "
+                  "'description' (2-sentence string), 'salary' (string like '₹10–15 LPA'), 'posted' (string like '2 days ago'). "
+                  "Do not use markdown formatting.")
+        try:
+            res = _ask_gemini(client, prompt)
+            res = re.sub(r'^```(?:json)?\s*', '', res)
+            res = re.sub(r'\s*```$', '', res).strip()
+            mock_jobs = json.loads(res)
+            platform_results = []
+            for j in mock_jobs:
+                platform_results.append({
+                    "id": str(uuid.uuid4()),
+                    "job_title": j.get("title", f"{role}"),
+                    "company": j.get("company", "Tech Corp"),
+                    "location": j.get("location", region),
+                    "link": f"https://example.com/jobs/{uuid.uuid4()}",
+                    "source": platform_name,
+                    "description": j.get("description", "View job post for more details."),
+                    "salary": j.get("salary", "Not disclosed"),
+                    "posted": j.get("posted", "Recently"),
+                    "status": "Not Applied"
+                })
+            print(f"Synthesis complete: Generated 5 mock jobs for {platform_name} via Gemini")
+            return platform_results
+        except Exception as gemini_err:
+            print(f"Mock generation failed for {platform_name}: {gemini_err}")
+            return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_platform = {executor.submit(generate_platform_jobs, p): p for p in target_platforms}
+        for future in concurrent.futures.as_completed(future_to_platform):
+            results = future.result()
+            if results:
+                all_mock_jobs.extend(results)
+            
+    random.shuffle(all_mock_jobs)
+    
+    _jobs_cache[sid] = all_mock_jobs
     
     return {
         "ok":     True,
-        "titles": [role], # Gemini title expansion removed in favor of strict extraction
-        "jobs":   all_normalized_jobs,
-        "count":  len(all_normalized_jobs),
+        "titles": [role],
+        "jobs":   all_mock_jobs,
+        "count":  len(all_mock_jobs),
     }
 
 
