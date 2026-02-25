@@ -32,6 +32,10 @@ import requests
 from bs4 import BeautifulSoup
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 try:
     import google.generativeai as genai
     _GENAI_OK = True
@@ -293,22 +297,45 @@ _MODELS = [
     "gemini-2.0-flash",
 ]
 
-def _ask_gemini(client: Any, prompt: str) -> str:
-    """Call Gemini with automatic model fallback on 429."""
-    from google.genai import errors as genai_errors
+def _ask_gemini(prompt: str, api_key: str) -> str:
+    """Call Gemini directly via HTTP REST to bypass SDK thread un-safety."""
+    import time
+    import requests
+    
+    if not api_key:
+        raise RuntimeError("No GEMINI_API_KEY provided to function.")
+        
     last_err = None
-    for model in _MODELS:
+    for model_name in _MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={_api_key}"
+        headers = {'Content-Type': 'application/json'}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.7}
+        }
+        
         try:
-            resp = client.models.generate_content(model=model, contents=prompt)
-            return resp.text.strip()
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                if 'candidates' in data and len(data['candidates']) > 0:
+                    return data['candidates'][0]['content']['parts'][0]['text'].strip()
+                raise ValueError("Valid 200 OK but no candidates returned by Gemini.")
+            elif resp.status_code == 429:
+                last_err = f"Quota Exhausted (429) for {model_name}"
+                time.sleep(3)
+                continue
+            else:
+                last_err = f"HTTP {resp.status_code} from {model_name}: {resp.text}"
+                continue
         except Exception as exc:
             txt = str(exc)
-            if "429" in txt or "RESOURCE_EXHAUSTED" in txt or "quota" in txt.lower():
+            if "429" in txt or "quota" in txt.lower():
                 last_err = exc
-                _time.sleep(3)   # brief pause before next model
+                time.sleep(3)
                 continue
-            raise   # non-quota error — propagate
-    raise RuntimeError(f"All Gemini models quota-exhausted: {last_err}")
+            raise
+    raise RuntimeError(f"All Gemini models failed: {last_err}")
 
 
 def _scrape_linkedin_jobs(role: str, location: str, limit: int = 40) -> list[dict]:
@@ -725,9 +752,6 @@ async def search_jobs(sid: str):
     import concurrent.futures
     import random
     
-    api_key = os.environ.get("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key) if (_GENAI_OK and api_key) else None
-    
     # Map the stored user sources to the platform strings
     target_platforms = []
     if not sources or "LinkedIn" in sources:
@@ -754,7 +778,7 @@ async def search_jobs(sid: str):
     all_mock_jobs = []
 
     def generate_platform_jobs(platform_name):
-        if not client:
+        if not _GENAI_OK:
             return []
             
         prompt = (f"Generate 5 completely realistic job listings for a '{role}' in '{region}' supposedly scraped from '{platform_name}'. "
@@ -763,7 +787,7 @@ async def search_jobs(sid: str):
                   "'description' (2-sentence string), 'salary' (string like '₹10–15 LPA'), 'posted' (string like '2 days ago'). "
                   "Do not use markdown formatting.")
         try:
-            res = _ask_gemini(client, prompt)
+            res = _ask_gemini(prompt, api_key=_api_key)
             res = re.sub(r'^```(?:json)?\s*', '', res)
             res = re.sub(r'\s*```$', '', res).strip()
             mock_jobs = json.loads(res)
